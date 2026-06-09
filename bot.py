@@ -1,8 +1,7 @@
 import requests
 import sqlite3
 import time
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
 # ================== TOKEN ==================
 BOT_TOKEN = "8382786338:AAG5PIqTogDL0UDW0RJnNEXUAt1PtHhRo38"
