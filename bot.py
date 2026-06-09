@@ -232,7 +232,6 @@ async def ai_router(user_id, text):
     }
 
     payload = {
-        payload = {
     "model": "meta-llama/llama-3.1-8b-instruct:free",
     "messages": [
         {"role": "system", "content": system_prompt},
