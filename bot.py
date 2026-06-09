@@ -380,38 +380,32 @@ async def sholat(kota):
 
 async def berita():
 
-    url = (
-    "https://newsapi.org/v2/everything"
-    "?q=Indonesia"
-    "&language=id"
-    "&sortBy=publishedAt"
-    f"&apiKey={NEWS_API_KEY}"
-    )
-
     try:
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+        feeds = [
+            "https://www.cnnindonesia.com/nasional/rss",
+            "https://rss.kompas.com/rss"
+        ]
 
-                data = await response.json()
+        hasil = []
 
-                print("NEWS STATUS =", response.status)
-                print("NEWS DATA =", data)
+        for url in feeds:
 
-                result = []
+            feed = feedparser.parse(url)
 
-                for item in data["articles"][:5]:
+            for item in feed.entries[:3]:
 
-                    result.append({
-                        "title": item["title"],
-                        "desc": item.get("description") or "-",
-                        "img": item.get("urlToImage")
-                    })
+                hasil.append({
+                    "title": item.title,
+                    "desc": getattr(item, "summary", "-"),
+                    "img": None
+                })
 
-                return result
+        return hasil[:6]
 
     except Exception as e:
-        print("NEWS ERROR =", e)
+
+        print("BERITA ERROR =", e)
         return []
 
 # =========================
