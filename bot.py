@@ -320,21 +320,26 @@ async def cuaca(kota):
 
                 data = await response.json()
 
-                print("STATUS =", response.status)
-                print("DATA =", data)
+                if data.get("cod") != 200:
+                    return f"❌ {data.get('message', 'Kota tidak ditemukan')}"
 
-                if response.status != 200:
-                    return f"Error API: {data}"
+                nama = data["name"]
+                kondisi = data["weather"][0]["description"]
+                suhu = data["main"]["temp"]
+                kelembapan = data["main"]["humidity"]
+                angin = data["wind"]["speed"]
 
                 return (
-                    f"🌤 {kota.title()}\n\n"
-                    f"Kondisi: {data['weather'][0]['description']}\n"
-                    f"Suhu: {data['main']['temp']}°C"
+                    f"🌤 Cuaca {nama}\n\n"
+                    f"🌡 Suhu: {suhu}°C\n"
+                    f"☁️ Kondisi: {kondisi}\n"
+                    f"💧 Kelembapan: {kelembapan}%\n"
+                    f"🌬 Angin: {angin} m/s"
                 )
 
     except Exception as e:
         print("CUACA ERROR =", e)
-        return f"ERROR: {e}"
+        return f"❌ Error cuaca: {e}"
 
 # =========================
 # SHOLAT
