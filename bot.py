@@ -24,10 +24,12 @@ from telegram.ext import (
 # CONFIG
 # =========================
 
-BOT_TOKEN = os.getenv("8382786338:AAG5PIqTogDL0UDW0RJnNEXUAt1PtHhRo38")
-OPENROUTER_API_KEY = os.getenv("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")
-WEATHER_API_KEY = os.getenv("9f6e89a97a0dab91ac1fbd21c7e0b476")
-NEWS_API_KEY = os.getenv("3fc49704bdae4569b56c62dd1216dad7")
+import os
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 MAX_MEMORY = 10
 RATE_LIMIT_SECONDS = 3
