@@ -238,6 +238,12 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("mode", mode_cmd))
 app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
+updater = Updater("8382786338:AAG5PIqTogDL0UDW0RJnNEXUAt1PtHhRo38", use_context=True)
+
+dp = updater.dispatcher
+
+updater.start_polling()
+updater.idle()
 
 print("🔥 LEVEL 100 VPS BOT RUNNING")
 app.run_polling()
