@@ -381,8 +381,11 @@ async def sholat(kota):
 async def berita():
 
     url = (
-        "https://newsapi.org/v2/top-headlines"
-        f"?country=id&apiKey={NEWS_API_KEY}"
+    "https://newsapi.org/v2/everything"
+    "?q=Indonesia"
+    "&language=id"
+    "&sortBy=publishedAt"
+    f"&apiKey={NEWS_API_KEY}"
     )
 
     try:
