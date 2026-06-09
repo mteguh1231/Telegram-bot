@@ -392,6 +392,9 @@ async def berita():
 
                 data = await response.json()
 
+                print("NEWS STATUS =", response.status)
+                print("NEWS DATA =", data)
+
                 result = []
 
                 for item in data["articles"][:5]:
@@ -404,7 +407,8 @@ async def berita():
 
                 return result
 
-    except Exception:
+    except Exception as e:
+        print("NEWS ERROR =", e)
         return []
 
 # =========================
