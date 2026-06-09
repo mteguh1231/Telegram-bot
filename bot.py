@@ -232,7 +232,7 @@ async def ai_router(user_id, text):
     }
 
     payload = {
-        "model": "meta-llama/llama-3.1-8b-instruct",
+        MODEL = "meta-llama/llama-3.1-8b-instruct:free",
         "messages": messages
     }
 
