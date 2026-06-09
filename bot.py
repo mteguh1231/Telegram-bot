@@ -5,6 +5,7 @@ import hashlib
 import logging
 import sqlite3
 import aiohttp
+import feedparser
 
 from telegram import (
     Update,
