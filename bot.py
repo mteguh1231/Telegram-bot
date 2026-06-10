@@ -19,6 +19,10 @@ DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
+# Spotify API Keys
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Inisialisasi Klien AI
@@ -41,9 +45,50 @@ def show_main_menu(chat_id, text="Pilih menu di bawah:"):
         types.KeyboardButton("💬 Chat"),
         types.KeyboardButton("🌍 Info"),
         types.KeyboardButton("🧰 Tools"),
+        types.KeyboardButton("🎵 Musik"),
         types.KeyboardButton("⚙️ Reset")
     )
     bot.send_message(chat_id, text, reply_markup=markup)
+
+# Helper Fungsi Spotify
+def get_spotify_token():
+    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+        return None
+    url = "https://accounts.spotify.com/api/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {"grant_type": "client_credentials"}
+    try:
+        res = requests.post(url, headers=headers, data=data, auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET))
+        if res.status_code == 200:
+            return res.json().get("access_token")
+    except:
+        return None
+    return None
+
+def search_spotify_track(query):
+    token = get_spotify_token()
+    if not token:
+        return "config_error"
+    url = "https://api.spotify.com/v1/search"
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"q": query, "type": "track", "limit": 1}
+    try:
+        res = requests.get(url, headers=headers, params=params)
+        if res.status_code == 200:
+            items = res.json().get("tracks", {}).get("items", [])
+            if items:
+                track = items[0]
+                return {
+                    "title": track.get("name"),
+                    "artist": track["artists"][0]["name"] if track["artists"] else "Unknown",
+                    "album": track.get("album", {}).get("name"),
+                    "link": track.get("external_urls", {}).get("spotify"),
+                    "preview": track.get("preview_url")
+                }
+            return "not_found"
+    except:
+        return "api_error"
+    return "not_found"
 
 # --- Command /start ---
 @bot.message_handler(commands=['start'])
@@ -55,20 +100,24 @@ def send_welcome(message):
         "🚀 *Kemampuan saya:*\n"
         "• 🤖 *AI Chat:* Analisis teks & jawaban cerdas.\n"
         "• 🌍 *Info:* Cuaca AI, Berita Real-Time, dan Quotes.\n"
-        "• 🧰 *Tools:* Download video, analisis foto, ringkas dokumen.\n\n"
+        "• 🧰 *Tools:* Download video, analisis foto, ringkas dokumen.\n"
+        "• 🎵 *Musik:* Cari lagu dan dengerin preview Spotify!\n\n"
         "Gunakan tombol di bawah untuk mulai beraksi."
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
     show_main_menu(message.chat.id, "Pilih kategori fitur:")
 
 # --- Handle Navigasi Menu Utama ---
-@bot.message_handler(func=lambda message: message.text in ["💬 Chat", "🌍 Info", "🧰 Tools", "⚙️ Reset"])
+@bot.message_handler(func=lambda message: message.text in ["💬 Chat", "🌍 Info", "🧰 Tools", "🎵 Musik", "⚙️ Reset"])
 def handle_menu_click(message):
     user_id = message.chat.id
     user_states[user_id] = None
     
     if message.text == "💬 Chat":
         bot.reply_to(message, "💬 *Mode Chat AI Aktif*\nSilakan kirim pertanyaanmu!")
+    elif message.text == "🎵 Musik":
+        user_states[user_id] = "awaiting_music"
+        bot.reply_to(message, "🎵 *Pencarian Musik Spotify*\nKetik nama penyanyi dan judul lagu yang ingin kamu cari:")
     elif message.text == "🌍 Info":
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
@@ -99,34 +148,28 @@ def handle_callback(call):
     if call.data == "cmd_back":
         bot.delete_message(user_id, call.message.message_id)
         show_main_menu(user_id, "Kembali ke Menu Utama.")
-        
     elif call.data == "state_cuaca":
         user_states[user_id] = "awaiting_city"
         bot.edit_message_text("🌤️ Ketik nama kota untuk dicek cuacanya (contoh: Jakarta):", user_id, call.message.message_id)
-        
     elif call.data == "state_download":
         user_states[user_id] = "awaiting_url"
         bot.edit_message_text("📥 Kirim link video:", user_id, call.message.message_id)
-        
     elif call.data == "cmd_berita":
         bot.edit_message_text("📰 *Menggali berita terbaru...*", user_id, call.message.message_id, parse_mode="Markdown")
         try:
-            # Mengambil 3 berita teratas dari internet
             results = DDGS().text("berita terkini indonesia hari ini", max_results=3)
             news_text = "📰 *Berita Utama Hari Ini:*\n\n"
             for idx, r in enumerate(results, 1):
                 news_text += f"{idx}. *[{r['title']}]({r['href']})*\n_{r['body'][:100]}..._\n\n"
             bot.send_message(user_id, news_text, parse_mode="Markdown", disable_web_page_preview=True)
-        except Exception as e:
+        except:
             bot.send_message(user_id, "Gagal mengambil berita saat ini.")
-            
     elif call.data == "cmd_quote":
         try:
             res = requests.get("https://api.quotable.io/random").json()
             bot.send_message(user_id, f"💡 *Quote of the day:*\n\n_\"{res['content']}\"_\n- {res['author']}", parse_mode="Markdown")
         except:
             bot.send_message(user_id, "Gagal mengambil quote.")
-            
     elif call.data == "media_vision": bot.reply_to(call.message, "📸 Kirim foto untuk dianalisis oleh AI.")
     elif call.data == "media_doc": bot.reply_to(call.message, "📄 Kirim file dokumen (.pdf/.txt) untuk diringkas.")
 
@@ -136,8 +179,35 @@ def handle_all(message):
     user_id = message.chat.id
     state = user_states.get(user_id)
 
+    # Logika Pencarian Spotify
+    if state == "awaiting_music" and message.text:
+        bot.reply_to(message, "🔍 Sedang mencari lagu di Spotify...")
+        result = search_spotify_track(message.text)
+        
+        if result == "config_error":
+            bot.reply_to(message, "❌ Fitur musik belum dikonfigurasi. Pastikan API Spotify sudah diisi di Railway.")
+        elif result == "api_error" or result == "not_found":
+            bot.reply_to(message, "❌ Lagu tidak ditemukan. Coba ketik lebih spesifik (Contoh: Tulus - Hati Hati di Jalan).")
+        else:
+            info_lagu = (
+                f"🎵 *Lagu Ditemukan!*\n\n"
+                f"📌 *Judul:* {result['title']}\n"
+                f"🎤 *Penyanyi:* {result['artist']}\n"
+                f"💿 *Album:* {result['album']}\n\n"
+                f"🎧 *Dengarkan Penuh:* [Buka di Spotify]({result['link']})"
+            )
+            bot.send_message(user_id, info_lagu, parse_mode="Markdown")
+            
+            # Kirim preview audio jika tersedia dari Spotify
+            if result['preview']:
+                try:
+                    bot.send_audio(user_id, result['preview'], caption="🔊 Potongan Preview Musik (30 Detik)")
+                except:
+                    pass
+        user_states[user_id] = None
+
     # Logika Download Video
-    if state == "awaiting_url" and message.text:
+    elif state == "awaiting_url" and message.text:
         bot.reply_to(message, "⏳ Sedang memproses download... Mohon tunggu.")
         try:
             ydl_opts = {'format': 'best', 'outtmpl': 'vid.%(ext)s'}
@@ -147,18 +217,14 @@ def handle_all(message):
         except: bot.reply_to(message, "❌ Gagal. Link mungkin tidak didukung atau video terlalu besar.")
         user_states[user_id] = None
         
-    # Logika Cuaca Canggih (Dengan Saran AI)
+    # Logika Cuaca Canggih
     elif state == "awaiting_city" and message.text:
         bot.reply_to(message, "🌤️ Mengecek kondisi cuaca dan menganalisis...")
         try:
-            # Ambil data cuaca (Kondisi + Suhu + Kecepatan Angin)
             res = requests.get(f"https://wttr.in/{message.text}?format=Kondisi:+%C,+Suhu:+%t,+Angin:+%w")
             cuaca_mentah = res.text
-            
-            # Minta Gemini membuat saran berdasarkan cuaca tersebut
             prompt_saran = f"Cuaca di {message.text} saat ini: {cuaca_mentah}. Berikan 2 kalimat saran singkat (seperti rekomendasi pakaian atau aktivitas) dengan gaya asisten yang ramah."
             ai_saran = ai_client.models.generate_content(model="gemini-2.5-flash", contents=prompt_saran).text
-            
             hasil_akhir = f"📍 *Laporan Cuaca: {message.text.title()}*\n`{cuaca_mentah}`\n\n💡 *Saran AI:*\n{ai_saran}"
             bot.reply_to(message, hasil_akhir, parse_mode="Markdown")
         except: 
@@ -184,7 +250,7 @@ def handle_all(message):
                 bot.reply_to(message, res.text)
         except Exception as e: handle_quota_error(bot, message, e)
         
-    # Logika Chat AI Gacha (80% Gemini / 20% DeepSeek)
+    # Logika Chat AI Gacha
     elif message.text and not message.text.startswith('/'):
         try:
             chance = random.random()
@@ -218,4 +284,4 @@ if __name__ == "__main__":
     bot.remove_webhook()
     print("🤖 BotPro Elite sedang berjalan...")
     bot.infinity_polling()
-    
+        
