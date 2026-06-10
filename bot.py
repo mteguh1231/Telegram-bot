@@ -6,6 +6,7 @@ import requests
 import xml.etree.ElementTree as ET
 from PIL import Image
 from google import genai
+from google.genai import types
 from gtts import gTTS
 from yt_dlp import YoutubeDL
 
@@ -76,10 +77,14 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR BARU 5: AI Image Generator (Versi Anti-Blokir)
+# FITUR BARU 5: AI Image Generator (Native Google Gemini)
 # ==========================================
 @bot.message_handler(commands=['gambar'])
 def handle_image_generation(message):
+    if not ai_client:
+        bot.reply_to(message, "API Key belum terpasang.")
+        return
+
     try:
         prompt = message.text.split(" ", 1)[1]
     except IndexError:
@@ -87,30 +92,42 @@ def handle_image_generation(message):
         return
 
     bot.send_chat_action(message.chat.id, 'upload_photo')
-    msg_tunggu = bot.reply_to(message, "🎨 Sedang melukis gambar... Mohon tunggu sebentar.")
+    msg_tunggu = bot.reply_to(message, "🎨 Sedang melukis gambar dengan otak Gemini... Mohon tunggu sebentar.")
     
     try:
-        safe_prompt = requests.utils.quote(prompt)
-        image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?nologo=true"
+        # Memerintahkan Gemini untuk merespons dengan format GAMBAR
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash-image',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+            ),
+        )
         
-        # PERUBAHAN: Menyamar sebagai browser Chrome PC agar tidak diblokir
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        
-        # Mengunduh gambar dengan membawa "KTP" penyamaran
-        gambar_diunduh = requests.get(image_url, headers=headers)
-        
-        if gambar_diunduh.status_code == 200:
-            bot.send_photo(message.chat.id, gambar_diunduh.content, caption=f"🎨 Hasil dari: *{prompt}*", parse_mode="Markdown")
-        else:
-            # Jika masih gagal, bot akan memberitahu angka kode error-nya
-            bot.reply_to(message, f"Maaf, server pelukis menolak. (Kode Error: {gambar_diunduh.status_code})")
+        gambar_ditemukan = False
+        for part in response.parts:
+            if part.inline_data:
+                # Mengambil file gambar dari Google
+                pil_image = part.as_image()
+                
+                # Mengubahnya menjadi format file untuk Telegram
+                bio = io.BytesIO()
+                pil_image.save(bio, format="JPEG")
+                bio.seek(0)
+                
+                bot.send_photo(message.chat.id, bio, caption=f"🎨 Hasil dari: *{prompt}*", parse_mode="Markdown")
+                gambar_ditemukan = True
+                break
+                
+        if not gambar_ditemukan:
+            bot.reply_to(message, "Maaf, gambar gagal dibuat (mungkin ditolak oleh filter keamanan Google).")
             
         bot.delete_message(message.chat.id, msg_tunggu.message_id)
+        
     except Exception as e:
-        bot.reply_to(message, "Maaf, terjadi kesalahan teknis saat membuat gambar.")
+        bot.reply_to(message, "Maaf, server gambar Google sedang sibuk atau menolak.")
         logging.error(f"Error Image Gen: {e}")
+        
         
         
 
