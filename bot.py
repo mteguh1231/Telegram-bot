@@ -76,19 +76,39 @@ def handle_basic_commands(message):
 # ==========================================
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
+    if not ai_client: return
     bot.send_chat_action(message.chat.id, 'upload_document')
     try:
         file_info = bot.get_file(message.document.file_id)
         nama_file = message.document.file_name
         with open(nama_file, 'wb') as f: f.write(bot.download_file(file_info.file_path))
         
+        # Upload file ke Gemini
         doc_upload = ai_client.files.upload(file=nama_file)
-        if message.chat.id not in user_chats: user_chats[message.chat.id] = ai_client.chats.create(model="gemini-2.5-flash")
         
-        res = user_chats[message.chat.id].send_message([doc_upload, "Tolong ringkas dokumen ini."])
-        bot.reply_to(message, f"📄 *Analisa Dokumen:*\n\n{res.text}", parse_mode="Markdown")
+        # Loop: Tunggu sampai status file menjadi "ACTIVE"
+        bot.reply_to(message, "⏳ AI sedang membaca dokumen, tunggu sebentar ya...")
+        while doc_upload.state.name == "PROCESSING":
+            time.sleep(2)
+            doc_upload = ai_client.files.get(name=doc_upload.name)
+            
+        if doc_upload.state.name != "ACTIVE":
+            bot.reply_to(message, "Gagal memproses file.")
+            return
+
+        # Proses analisa
+        if message.chat.id not in user_chats:
+            user_chats[message.chat.id] = ai_client.chats.create(model="gemini-2.5-flash")
+            
+        prompt = message.caption if message.caption else "Tolong ringkas dokumen ini."
+        response = user_chats[message.chat.id].send_message([doc_upload, prompt])
+        
+        bot.reply_to(message, f"📄 *Analisa Dokumen:*\n\n{response.text}", parse_mode="Markdown")
         os.remove(nama_file)
-    except: bot.reply_to(message, "Gagal membaca dokumen.")
+    except Exception as e:
+        bot.reply_to(message, "Gagal membaca dokumen.")
+        logging.error(f"Error Doc: {e}")
+        
 
 @bot.message_handler(content_types=['text'])
 def handle_chat(message):
