@@ -6,6 +6,7 @@ import requests
 import xml.etree.ElementTree as ET
 from PIL import Image
 from google import genai
+from google.genai import types # <--- INI YANG TADI TERLEWAT
 from gtts import gTTS
 from yt_dlp import YoutubeDL
 
@@ -34,16 +35,13 @@ else:
 def send_welcome(message):
     teks = (
         f"Halo *{message.from_user.first_name}*! 👋\n\n"
-        "Saya adalah bot AI Super V7 (Audio Edition). Perintah:\n\n"
-        "🤖 *Chat Teks:* Ngobrol biasa (punya memori)\n"
-        "👂 *Voice Chat:* Kirim Voice Note (VN), saya bisa dengar!\n"
-        "🗣️ */suara <tanya>:* AI membalas pakai Voice Note\n"
-        "📥 */download <link>:* Unduh video (YT/TikTok)\n"
-        "👁️ *Vision:* Kirim foto untuk dianalisa AI\n"
-        "🌤️ */cuaca <kota>* - Info cuaca\n"
-        "📰 */berita* - Berita CNN\n"
-        "💡 */quote* - Quote acak\n"
-        "🧹 */reset* - Hapus memori"
+        "Bot AI Super V7 siap melayani.\n\n"
+        "🤖 *Chat:* Memori AI\n"
+        "👂 *Voice Chat:* Kirim VN, saya dengarkan!\n"
+        "🗣️ */suara <tanya>:* Balas pakai VN\n"
+        "📥 */download <link>:* Unduh Video\n"
+        "👁️ *Vision:* Kirim foto\n"
+        "🧹 */reset:* Hapus memori"
     )
     bot.reply_to(message, teks, parse_mode="Markdown")
 
@@ -76,46 +74,34 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR: Telinga AI (Mendengar Voice Note) - FIX FINAL
+# Telinga AI (Mendengar Voice Note)
 # ==========================================
 @bot.message_handler(content_types=['voice'])
 def handle_voice_chat(message):
     if not ai_client: return
-    
     bot.send_chat_action(message.chat.id, 'typing')
     try:
-        # 1. Download Voice Note dari Telegram
         file_info = bot.get_file(message.voice.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-        
-        # 2. Simpan sementara di server
         nama_file_audio = f"vn_{message.chat.id}.ogg"
         with open(nama_file_audio, 'wb') as new_file:
             new_file.write(downloaded_file)
             
-        # 3. Upload file ke otak Google Gemini (Menggunakan Config agar tidak crash)
+        # Menggunakan config agar Google paham tipe file-nya
         audio_upload = ai_client.files.upload(
-            file=nama_file_audio,
+            file=nama_file_audio, 
             config=types.UploadFileConfig(mime_type="audio/ogg")
         )
         
-        # 4. Kirim audio tersebut ke dalam ruang memori obrolan kita
         if message.chat.id not in user_chats:
             user_chats[message.chat.id] = ai_client.chats.create(model="gemini-2.5-flash")
-            
-        instruksi = "Tolong dengarkan dan balas pesan suara ini dalam bahasa Indonesia."
-        response = user_chats[message.chat.id].send_message([audio_upload, instruksi])
         
-        # 5. Balas pesannya ke user dan hapus file sampah di server
+        response = user_chats[message.chat.id].send_message([audio_upload, "Tolong dengarkan dan balas pesan suara ini dalam bahasa Indonesia."])
         bot.reply_to(message, response.text, parse_mode="Markdown")
         os.remove(nama_file_audio)
-        
     except Exception as e:
         bot.reply_to(message, "Maaf, telinga AI sedang berdengung.")
         logging.error(f"Error Voice Chat: {e}")
-        
-        
-        
 
 # ==========================================
 # Sosmed Downloader
@@ -125,9 +111,9 @@ def handle_download(message):
     try:
         url = message.text.split(" ", 1)[1]
     except IndexError:
-        bot.reply_to(message, "Format salah. Coba: `/download <link>`", parse_mode="Markdown")
+        bot.reply_to(message, "Format: `/download <link>`", parse_mode="Markdown")
         return
-    msg_tunggu = bot.reply_to(message, "⏳ Sedang memproses video...")
+    msg_tunggu = bot.reply_to(message, "⏳ Memproses video...")
     bot.send_chat_action(message.chat.id, 'upload_video')
     ydl_opts = {'format': 'best[filesize<50M]', 'outtmpl': f'video_{message.chat.id}.%(ext)s', 'quiet': True, 'noplaylist': True}
     try:
@@ -139,7 +125,7 @@ def handle_download(message):
         os.remove(filename)
         bot.delete_message(message.chat.id, msg_tunggu.message_id)
     except Exception as e:
-        bot.reply_to(message, "❌ Gagal! Video mungkin terlalu besar/diprivasi.")
+        bot.reply_to(message, "❌ Gagal mengunduh video.")
 
 # ==========================================
 # Voice AI (Text to Speech)
@@ -154,7 +140,7 @@ def handle_voice_ai(message):
         return
     bot.send_chat_action(message.chat.id, 'record_voice')
     try:
-        response = ai_client.models.generate_content(model="gemini-2.5-flash", contents=f"Jawab singkat untuk suara: {pertanyaan}")
+        response = ai_client.models.generate_content(model="gemini-2.5-flash", contents=f"Jawab singkat: {pertanyaan}")
         tts = gTTS(text=response.text, lang='id')
         nama_file = f"suara_{message.chat.id}.ogg"
         tts.save(nama_file)
@@ -194,3 +180,4 @@ if __name__ == "__main__":
     logging.info("Bot Super V7 (AUDIO EDITION) berjalan...")
     bot.remove_webhook()
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
+                     
