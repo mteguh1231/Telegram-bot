@@ -6,7 +6,8 @@ import requests
 import xml.etree.ElementTree as ET
 from PIL import Image
 from google import genai
-from gtts import gTTS # <--- Library Pita Suara Baru
+from gtts import gTTS
+from yt_dlp import YoutubeDL # <--- Library Downloader Baru
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,15 +20,12 @@ if not BOT_TOKEN:
     exit()
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
-# Inisialisasi AI & Memori
 user_chats = {}
 
 if GEMINI_API_KEY:
     ai_client = genai.Client(api_key=GEMINI_API_KEY)
 else:
     ai_client = None
-    logging.warning("GEMINI_API_KEY tidak ditemukan!")
 
 # ==========================================
 # Command Dasar
@@ -36,141 +34,134 @@ else:
 def send_welcome(message):
     teks = (
         f"Halo *{message.from_user.first_name}*! 👋\n\n"
-        "Saya adalah bot AI Super V4. Perintah yang tersedia:\n\n"
-        "🤖 *Chat Teks:* Ngobrol biasa (punya memori)\n"
-        "🗣️ */suara <tanya>:* AI membalas pakai Voice Note\n"
-        "👁️ *Vision:* Kirim foto + caption untuk dianalisa\n"
+        "Saya adalah bot AI Super V5. Perintah yang tersedia:\n\n"
+        "🤖 *Chat:* Ngobrol biasa (punya memori)\n"
+        "🗣️ */suara <tanya>:* Dibalas pakai Voice Note\n"
+        "📥 */download <link>:* Unduh video (YT/TikTok/IG)\n"
+        "👁️ *Vision:* Kirim foto untuk dianalisa AI\n"
         "🌤️ */cuaca <kota>* - Info cuaca\n"
         "📰 */berita* - Berita CNN\n"
         "💡 */quote* - Quote acak\n"
-        "🧹 */reset* - Hapus memori"
+        "🧹 */reset* - Hapus memori obrolan"
     )
     bot.reply_to(message, teks, parse_mode="Markdown")
 
-@bot.message_handler(commands=['cuaca'])
-def cek_cuaca(message):
-    try:
-        kota = message.text.split(" ", 1)[1]
-        url = f"https://wttr.in/{kota}?format=%l:+%c+%t\nKelembapan:+%h\nAngin:+%w"
-        response = requests.get(url)
-        if response.status_code == 200:
-            bot.reply_to(message, f"🌤️ *Info Cuaca:*\n\n{response.text}", parse_mode="Markdown")
-        else:
-            bot.reply_to(message, "Cuaca kota tersebut tidak ditemukan.")
-    except IndexError:
-        bot.reply_to(message, "Format: `/cuaca bandung`", parse_mode="Markdown")
-
-@bot.message_handler(commands=['berita'])
-def cek_berita(message):
-    bot.reply_to(message, "⏳ Mengambil berita CNN...")
-    try:
-        url = "http://rss.cnn.com/rss/edition.rss"
-        response = requests.get(url)
-        root = ET.fromstring(response.content)
-        berita_teks = "📰 *Top Berita CNN:*\n\n"
-        for idx, item in enumerate(root.findall('./channel/item')[:5], 1):
-            berita_teks += f"{idx}. [{item.find('title').text}]({item.find('link').text})\n\n"
-        bot.send_message(message.chat.id, berita_teks, parse_mode="Markdown", disable_web_page_preview=True)
-    except Exception:
-        bot.send_message(message.chat.id, "Gagal mengambil berita.")
-
-@bot.message_handler(commands=['quote'])
-def cek_quote(message):
-    try:
-        data = requests.get("https://dummyjson.com/quotes/random").json()
-        bot.reply_to(message, f"💡 *Quote:*\n\n_\"{data['quote']}\"_\n— *{data['author']}*", parse_mode="Markdown")
-    except Exception:
-        bot.reply_to(message, "Sedang kehabisan kata-kata.")
-
-@bot.message_handler(commands=['reset'])
-def reset_memory(message):
-    user_id = message.chat.id
-    if user_id in user_chats:
-        del user_chats[user_id]
-    bot.reply_to(message, "🧹 Memori obrolan kita sudah dihapus. Mari mulai dari awal!")
+@bot.message_handler(commands=['cuaca', 'berita', 'quote', 'reset'])
+def handle_basic_commands(message):
+    cmd = message.text.split()[0]
+    if cmd == '/cuaca':
+        try:
+            kota = message.text.split(" ", 1)[1]
+            response = requests.get(f"https://wttr.in/{kota}?format=%l:+%c+%t\nKelembapan:+%h\nAngin:+%w")
+            bot.reply_to(message, f"🌤️ *Info Cuaca:*\n\n{response.text}" if response.status_code == 200 else "Cuaca kota tidak ditemukan.", parse_mode="Markdown")
+        except:
+            bot.reply_to(message, "Format: `/cuaca bandung`", parse_mode="Markdown")
+    elif cmd == '/berita':
+        bot.reply_to(message, "⏳ Mengambil berita...")
+        try:
+            root = ET.fromstring(requests.get("http://rss.cnn.com/rss/edition.rss").content)
+            teks = "📰 *Top Berita:*\n\n" + "".join([f"{i}. [{item.find('title').text}]({item.find('link').text})\n\n" for i, item in enumerate(root.findall('./channel/item')[:5], 1)])
+            bot.send_message(message.chat.id, teks, parse_mode="Markdown", disable_web_page_preview=True)
+        except:
+            bot.reply_to(message, "Gagal mengambil berita.")
+    elif cmd == '/quote':
+        try:
+            data = requests.get("https://dummyjson.com/quotes/random").json()
+            bot.reply_to(message, f"💡 *Quote:*\n\n_\"{data['quote']}\"_\n— *{data['author']}*", parse_mode="Markdown")
+        except:
+            bot.reply_to(message, "Error mengambil quote.")
+    elif cmd == '/reset':
+        if message.chat.id in user_chats: del user_chats[message.chat.id]
+        bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR BARU 3: Voice Note AI (Text-to-Speech)
+# FITUR BARU 4: Sosmed Downloader
+# ==========================================
+@bot.message_handler(commands=['download'])
+def handle_download(message):
+    try:
+        url = message.text.split(" ", 1)[1]
+    except IndexError:
+        bot.reply_to(message, "Format salah. Coba: `/download <link_video_tiktok_atau_youtube>`", parse_mode="Markdown")
+        return
+
+    msg_tunggu = bot.reply_to(message, "⏳ Sedang memproses video... (Bisa memakan waktu beberapa menit tergantung ukuran)")
+    bot.send_chat_action(message.chat.id, 'upload_video')
+
+    # Setting yt-dlp (Maksimal 50MB, usahakan format mp4)
+    ydl_opts = {
+        'format': 'best[filesize<50M]',
+        'outtmpl': f'video_{message.chat.id}.%(ext)s',
+        'quiet': True,
+        'noplaylist': True
+    }
+
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+        with open(filename, 'rb') as video:
+            bot.send_video(message.chat.id, video, caption="🎥 Ini videonya! Diunduh oleh Bot Supermu.")
+        
+        os.remove(filename) # Langsung hapus dari server setelah dikirim
+        bot.delete_message(message.chat.id, msg_tunggu.message_id) # Hapus pesan "tunggu"
+        
+    except Exception as e:
+        bot.reply_to(message, "❌ Gagal! Mungkin video terlalu besar (>50MB), diprivasi, atau link tidak didukung.")
+        logging.error(f"Error Downloader: {e}")
+
+# ==========================================
+# Voice AI (Text to Speech)
 # ==========================================
 @bot.message_handler(commands=['suara'])
 def handle_voice_ai(message):
-    if not ai_client:
-        bot.reply_to(message, "Sistem AI belum aktif.")
-        return
-
+    if not ai_client: return
     try:
-        # Mengambil pertanyaan setelah kata /suara
         pertanyaan = message.text.split(" ", 1)[1]
-    except IndexError:
-        bot.reply_to(message, "Format salah. Coba ketik:\n`/suara Ceritakan dongeng kancil singkat`", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "Format: `/suara <pertanyaan>`", parse_mode="Markdown")
         return
 
-    # Memberi efek di Telegram bahwa bot sedang "Merekam Suara"
     bot.send_chat_action(message.chat.id, 'record_voice')
-    
     try:
-        # Dapatkan teks jawaban dari AI
-        response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f"Jawab dengan singkat dan padat (maksimal 3 paragraf) untuk diubah menjadi suara: {pertanyaan}"
-        )
-        jawaban_teks = response.text
-
-        # Proses mengubah teks menjadi file suara (Bahasa Indonesia)
-        tts = gTTS(text=jawaban_teks, lang='id')
+        response = ai_client.models.generate_content(model="gemini-2.5-flash", contents=f"Jawab singkat (maks 2 paragraf) untuk suara: {pertanyaan}")
+        tts = gTTS(text=response.text, lang='id')
         nama_file = f"suara_{message.chat.id}.ogg"
         tts.save(nama_file)
-
-        # Kirim voice note ke pengguna
-        with open(nama_file, 'rb') as voice_file:
-            bot.send_voice(message.chat.id, voice_file, caption="🎙️ Jawaban AI")
-            
-        # Hapus file suara dari server agar tidak membuat server penuh
+        with open(nama_file, 'rb') as vf:
+            bot.send_voice(message.chat.id, vf, caption="🎙️")
         os.remove(nama_file)
-        
-    except Exception as e:
-        bot.reply_to(message, "Maaf, pita suara saya sedang serak. Terjadi kesalahan.")
-        logging.error(f"Error Voice AI: {e}")
+    except:
+        bot.reply_to(message, "Pita suara sedang serak.")
 
 # ==========================================
-# AI Vision (Menangani Gambar/Foto)
+# AI Vision & Chat Memori
 # ==========================================
 @bot.message_handler(content_types=['photo'])
-def handle_ai_vision(message):
-    if not ai_client:
-        return
+def handle_vision(message):
+    if not ai_client: return
     bot.send_chat_action(message.chat.id, 'typing')
     try:
         prompt = message.caption if message.caption else "Jelaskan gambar ini"
         file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        img = Image.open(io.BytesIO(downloaded_file))
-        response = ai_client.models.generate_content(model="gemini-2.5-flash", contents=[img, prompt])
-        bot.reply_to(message, response.text, parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, "Maaf, gagal menganalisa gambar.")
+        img = Image.open(io.BytesIO(bot.download_file(file_info.file_path)))
+        bot.reply_to(message, ai_client.models.generate_content(model="gemini-2.5-flash", contents=[img, prompt]).text, parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "Gagal menganalisa gambar.")
 
-# ==========================================
-# Chat AI dengan Memori
-# ==========================================
 @bot.message_handler(content_types=['text'])
-def handle_ai_chat(message):
-    user_id = message.chat.id
-    if not ai_client:
-        return
-    bot.send_chat_action(user_id, 'typing')
+def handle_chat(message):
+    if not ai_client: return
+    bot.send_chat_action(message.chat.id, 'typing')
     try:
-        if user_id not in user_chats:
-            user_chats[user_id] = ai_client.chats.create(model="gemini-2.5-flash")
-        response = user_chats[user_id].send_message(message.text)
-        bot.reply_to(message, response.text, parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, "Server Google sedang sibuk, mohon tunggu sebentar.")
+        if message.chat.id not in user_chats:
+            user_chats[message.chat.id] = ai_client.chats.create(model="gemini-2.5-flash")
+        bot.reply_to(message, user_chats[message.chat.id].send_message(message.text).text, parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "Server Google sedang sibuk.")
 
-# ==========================================
-# Eksekusi Utama
-# ==========================================
 if __name__ == "__main__":
-    logging.info("Bot Super V4 berjalan...")
+    logging.info("Bot Super V5 (ALL FITUR) berjalan...")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
         
