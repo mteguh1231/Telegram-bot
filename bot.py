@@ -51,7 +51,7 @@ def get_spotify_token():
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
     
-    # URL Resmi Autentikasi Spotify
+    # PERBAIKAN: URL Resmi Autentikasi Spotify
     url = "https://accounts.spotify.com/api/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"grant_type": "client_credentials"}
@@ -71,7 +71,7 @@ def search_spotify_track(query):
     if not token:
         return "config_error"
         
-    # URL Resmi Pencarian Spotify
+    # PERBAIKAN: URL Resmi Pencarian Spotify
     url = "https://api.spotify.com/v1/search"
     headers = {"Authorization": f"Bearer {token}"}
     params = {"q": query, "type": "track", "limit": 1}
@@ -96,6 +96,7 @@ def search_spotify_track(query):
     except Exception as e:
         print(f"Gagal cari lagu: {e}")
         return "api_error"
+        
         
 
 # --- Command /start ---
