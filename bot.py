@@ -4,7 +4,6 @@ import logging
 import telebot
 import requests
 import time
-import threading
 import xml.etree.ElementTree as ET
 from telebot import types
 from PIL import Image
@@ -42,118 +41,91 @@ def search_internet(query):
             return "\n\n".join([f"Sumber: {r['href']}\nInfo: {r['body']}" for r in results]) if results else "Info tidak ditemukan."
     except: return "Gagal akses internet."
 
-# --- UI / Buttons Handlers ---
+# --- UI Menu ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton("🌤️ Cuaca")
-    btn2 = types.KeyboardButton("📰 Berita")
-    btn3 = types.KeyboardButton("💡 Quote")
-    btn4 = types.KeyboardButton("⚙️ Opsi Lain")
-    markup.add(btn1, btn2, btn3, btn4)
-    bot.send_message(message.chat.id, "Halo! Pilih menu di bawah atau ketik langsung pesanmu:", reply_markup=markup)
+    markup.add(
+        types.KeyboardButton("🤖 Chat AI"),
+        types.KeyboardButton("🌐 Info Dunia"),
+        types.KeyboardButton("🛠️ Alat Media"),
+        types.KeyboardButton("⚙️ Pengaturan")
+    )
+    bot.send_message(message.chat.id, "Selamat datang! Pilih kategori fitur di bawah:", reply_markup=markup)
 
-@bot.message_handler(commands=['opsi'])
-def show_inline(message):
-    markup = types.InlineKeyboardMarkup()
-    btn1 = types.InlineKeyboardButton("Support Bot", callback_data="support")
-    btn2 = types.InlineKeyboardButton("Reset Memori", callback_data="reset_db")
-    markup.add(btn1, btn2)
-    bot.reply_to(message, "Pilih opsi pengaturan:", reply_markup=markup)
+@bot.message_handler(func=lambda message: message.text in ["🤖 Chat AI", "🌐 Info Dunia", "🛠️ Alat Media", "⚙️ Pengaturan"])
+def handle_menu_click(message):
+    if message.text == "🤖 Chat AI":
+        bot.reply_to(message, "Silakan ketik pertanyaanmu langsung. Saya akan menjawab sebagai AI.")
+    elif message.text == "🌐 Info Dunia":
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("🌤️ Cuaca", callback_data="cmd_cuaca"),
+            types.InlineKeyboardButton("📰 Berita", callback_data="cmd_berita"),
+            types.InlineKeyboardButton("💡 Quote", callback_data="cmd_quote")
+        )
+        bot.reply_to(message, "Pilih informasi yang ingin dilihat:", reply_markup=markup)
+    elif message.text == "🛠️ Alat Media":
+        bot.reply_to(message, "Gunakan perintah:\n/download [url] - Download Video\n/vision [kirim foto] - Analisis Foto\n/doc [kirim file] - Ringkas Dokumen")
+    elif message.text == "⚙️ Pengaturan":
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Reset Memori", callback_data="cmd_reset"))
+        bot.reply_to(message, "Pengaturan Bot:", reply_markup=markup)
 
+# --- Callback Handlers (Tombol Dinamis) ---
 @bot.callback_query_handler(func=lambda call: True)
-def handle_query(call):
-    if call.data == "support":
-        bot.answer_callback_query(call.id, "Terima kasih telah menggunakan bot!")
-    elif call.data == "reset_db":
-        bot.answer_callback_query(call.id, "Memori sesi telah di-reset.")
-        bot.send_message(call.message.chat.id, "Memori sesi lokal di-reset.")
+def handle_callback(call):
+    if call.data == "cmd_cuaca":
+        bot.reply_to(call.message, "Ketik: /cuaca [nama kota]")
+    elif call.data == "cmd_berita":
+        handle_berita(call.message)
+    elif call.data == "cmd_quote":
+        handle_quote(call.message)
+    elif call.data == "cmd_reset":
+        bot.reply_to(call.message, "Memori sesi telah di-reset.")
 
-# --- Text-based Command Handlers ---
-@bot.message_handler(func=lambda message: message.text in ["🌤️ Cuaca", "📰 Berita", "💡 Quote", "⚙️ Opsi Lain"])
-def handle_buttons(message):
-    if message.text == "🌤️ Cuaca": bot.reply_to(message, "Ketik: /cuaca [nama kota]")
-    elif message.text == "📰 Berita": handle_commands(message) # Akan diproses fungsi di bawah
-    elif message.text == "💡 Quote": handle_commands(message)
-    elif message.text == "⚙️ Opsi Lain": show_inline(message)
-
-@bot.message_handler(commands=['cuaca', 'berita', 'quote', 'reset'])
-def handle_commands(message):
-    cmd = message.text.split()[0]
-    if cmd == '/cuaca' or message.text == "🌤️ Cuaca":
-        try:
-            kota = message.text.split(" ", 1)[1] if len(message.text.split()) > 1 else "Jakarta"
-            res = requests.get(f"https://wttr.in/{kota}?format=%l:+%c+%t")
-            bot.reply_to(message, f"🌤️ {res.text}")
-        except: bot.reply_to(message, "Format: /cuaca jakarta")
-    elif cmd == '/berita' or message.text == "📰 Berita":
-        try:
-            r = requests.get("http://rss.cnn.com/rss/edition.rss")
-            root = ET.fromstring(r.content)
-            teks = "📰 *Top Berita:*\n\n" + "".join([f"{i}. {item.find('title').text}\n" for i, item in enumerate(root.findall('./channel/item')[:5], 1)])
-            bot.reply_to(message, teks, parse_mode="Markdown")
-        except: bot.reply_to(message, "Gagal ambil berita.")
-    elif cmd == '/quote' or message.text == "💡 Quote":
-        data = requests.get("https://dummyjson.com/quotes/random").json()
-        bot.reply_to(message, f"💡 _{data['quote']}_ \n— *{data['author']}*", parse_mode="Markdown")
-    elif cmd == '/reset':
-        bot.reply_to(message, "Memori sesi lokal di-reset.")
-
-# --- Media & File Handlers ---
-@bot.message_handler(content_types=['document'])
-def handle_document(message):
+# --- Functional Handlers ---
+def handle_berita(message):
     try:
-        file_info = bot.get_file(message.document.file_id)
-        nama_file = message.document.file_name
-        with open(nama_file, 'wb') as f: f.write(bot.download_file(file_info.file_path))
-        doc_upload = ai_client.files.upload(file=nama_file)
-        res = ai_client.chats.create(model="gemini-2.5-flash").send_message([doc_upload, "Ringkas dokumen ini."])
-        bot.reply_to(message, res.text)
-        os.remove(nama_file)
-    except: bot.reply_to(message, "Gagal baca dokumen.")
+        r = requests.get("http://rss.cnn.com/rss/edition.rss")
+        root = ET.fromstring(r.content)
+        teks = "📰 *Top Berita:*\n\n" + "".join([f"{i}. {item.find('title').text}\n" for i, item in enumerate(root.findall('./channel/item')[:5], 1)])
+        bot.reply_to(message, teks, parse_mode="Markdown")
+    except: bot.reply_to(message, "Gagal ambil berita.")
 
-@bot.message_handler(content_types=['photo'])
-def handle_vision(message):
-    file_info = bot.get_file(message.photo[-1].file_id)
-    img = Image.open(io.BytesIO(bot.download_file(file_info.file_path)))
-    res = ai_client.models.generate_content(model="gemini-2.5-flash", contents=[img, "Jelaskan gambar ini"])
-    bot.reply_to(message, res.text)
+def handle_quote(message):
+    data = requests.get("https://dummyjson.com/quotes/random").json()
+    bot.reply_to(message, f"💡 _{data['quote']}_ \n— *{data['author']}*", parse_mode="Markdown")
 
-@bot.message_handler(content_types=['voice'])
-def handle_voice(message):
-    file_info = bot.get_file(message.voice.file_id)
-    nama = "vn.ogg"
-    with open(nama, 'wb') as f: f.write(bot.download_file(file_info.file_path))
-    audio_upload = ai_client.files.upload(file=nama, config=genai_types.UploadFileConfig(mime_type="audio/ogg"))
-    res = ai_client.chats.create(model="gemini-2.5-flash").send_message([audio_upload, "Balas pesan suara ini."])
-    bot.reply_to(message, res.text)
-    os.remove(nama)
-
-@bot.message_handler(commands=['download'])
-def handle_download(message):
+@bot.message_handler(commands=['cuaca'])
+def handle_cuaca(message):
     try:
-        url = message.text.split(" ", 1)[1]
-        ydl_opts = {'format': 'best', 'outtmpl': 'vid.%(ext)s'}
-        with YoutubeDL(ydl_opts) as ydl: info = ydl.extract_info(url, download=True)
-        with open(f"vid.{info['ext']}", 'rb') as v: bot.send_video(message.chat.id, v)
-        os.remove(f"vid.{info['ext']}")
-    except: bot.reply_to(message, "Gagal unduh.")
+        kota = message.text.split(" ", 1)[1] if len(message.text.split()) > 1 else "Jakarta"
+        res = requests.get(f"https://wttr.in/{kota}?format=%l:+%c+%t")
+        bot.reply_to(message, f"🌤️ {res.text}")
+    except: bot.reply_to(message, "Format: /cuaca jakarta")
 
 @bot.message_handler(content_types=['text'])
 def handle_chat(message):
-    if message.text.startswith('/'): return # Skip command
-    user_id = message.chat.id
-    history = ambil_memori(user_id)
-    context = "\n".join([f"User: {h['message']}\nBot: {h['response']}" for h in history])
-    if any(key in message.text.lower() for key in ["siapa", "berita", "terbaru"]):
-        context += f"\nInfo Internet: {search_internet(message.text)}"
-    res = ai_client.chats.create(model="gemini-2.5-flash").send_message(f"Ingatan:\n{context}\n\nUser: {message.text}")
-    simpan_chat(user_id, message.text, res.text)
-    bot.reply_to(message, res.text)
+    if message.text.startswith('/'): return
+    try:
+        user_id = message.chat.id
+        history = ambil_memori(user_id)
+        context = "\n".join([f"User: {h['message']}\nBot: {h['response']}" for h in history])
+        if any(key in message.text.lower() for key in ["siapa", "berita", "terbaru"]):
+            context += f"\nInfo Internet: {search_internet(message.text)}"
+        
+        res = ai_client.chats.create(model="gemini-2.5-flash").send_message(f"Ingatan:\n{context}\n\nUser: {message.text}")
+        simpan_chat(user_id, message.text, res.text)
+        bot.reply_to(message, res.text)
+    except Exception as e:
+        if "429" in str(e):
+            bot.reply_to(message, "⚠️ *Maaf, kuota harian bot sedang penuh.* Coba lagi besok ya!")
+        else:
+            bot.reply_to(message, "Sedang ada gangguan teknis.")
 
 # --- Start ---
 if __name__ == "__main__":
-    print("Bot berjalan dengan UI...")
     bot.remove_webhook()
     bot.infinity_polling()
-        
+    
