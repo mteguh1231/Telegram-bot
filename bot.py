@@ -3,7 +3,7 @@ import logging
 import telebot
 import requests
 import xml.etree.ElementTree as ET
-from google import genai # <--- Menggunakan library Google terbaru
+from google import genai
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,7 +18,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Setup Google Gemini AI (VERSI TERBARU)
+# Setup Google Gemini AI (Versi Terbaru)
 if GEMINI_API_KEY:
     ai_client = genai.Client(api_key=GEMINI_API_KEY)
 else:
@@ -94,7 +94,7 @@ def cek_quote(message):
         bot.reply_to(message, "Sedang kehabisan kata-kata. Coba lagi nanti!")
 
 # ==========================================
-# Chat AI (Format Terbaru Gemini 3.5 Flash)
+# Chat AI (Format Terbaru Gemini 2.5 Flash)
 # ==========================================
 @bot.message_handler(content_types=['text'])
 def handle_ai_chat(message):
@@ -105,9 +105,8 @@ def handle_ai_chat(message):
     bot.send_chat_action(message.chat.id, 'typing')
     
     try:
-        # Menggunakan format pemanggilan API generasi baru
         response = ai_client.models.generate_content(
-            model="gemini-3.5-flash",
+            model="gemini-2.5-flash",
             contents=message.text
         )
         bot.reply_to(message, response.text, parse_mode="Markdown")
@@ -121,4 +120,4 @@ def handle_ai_chat(message):
 if __name__ == "__main__":
     logging.info("Bot Multifungsi V2 sedang berjalan...")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-    
+                 
