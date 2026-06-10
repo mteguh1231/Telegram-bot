@@ -140,7 +140,7 @@ def handle_all(message):
                 doc = ai_client.files.upload(file=nama)
                 
                 # UBAH KEDUA: Menggunakan model gemini-3.1-pro-preview untuk dokumen
-                res = ai_client.chats.create(model="gemini-3.1-pro-preview").send_message([doc, "Ringkas ini."])
+                res = ai_client.chats.create(model="gemini-3").send_message([doc, "Ringkas ini."])
                 bot.reply_to(message, res.text)
                 os.remove(nama)
             else:
@@ -148,7 +148,7 @@ def handle_all(message):
                 img = Image.open(io.BytesIO(bot.download_file(file_info.file_path)))
                 
                 # UBAH KETIGA: Menggunakan model gemini-3.1-pro-preview untuk foto
-                res = ai_client.models.generate_content(model="gemini-3.1-pro-preview", contents=[img, "Jelaskan gambar ini"])
+                res = ai_client.models.generate_content(model="gemini-3-flash", contents=[img, "Jelaskan gambar ini"])
                 bot.reply_to(message, res.text)
         except Exception as e: handle_quota_error(bot, message, e)
         
