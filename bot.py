@@ -46,7 +46,7 @@ def show_main_menu(chat_id, text="Pilih menu di bawah:"):
     )
     bot.send_message(chat_id, text, reply_markup=markup)
 
-# --- Helper Fungsi Spotify (MODE DETEKTIF) ---
+# --- Helper Fungsi Spotify (MODE DETEKTIF - TANPA TYPO) ---
 def search_spotify_track(query):
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return "DEBUG_ERROR: Client ID atau Secret belum terdeteksi di Railway. Pastikan namanya benar."
@@ -59,7 +59,6 @@ def search_spotify_track(query):
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"grant_type": "client_credentials"}
     
-    # 1. Melacak Proses Pembuatan Token
     try:
         res_token = requests.post(url_token, headers=headers, data=data, auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET), timeout=10)
         if res_token.status_code != 200:
@@ -73,7 +72,6 @@ def search_spotify_track(query):
     headers_search = {"Authorization": f"Bearer {token}"}
     params = {"q": query, "type": "track", "limit": 1}
     
-    # 2. Melacak Proses Pencarian Lagu
     try:
         res_search = requests.get(url_search, headers=headers_search, params=params, timeout=10)
         if res_search.status_code != 200:
@@ -160,7 +158,7 @@ def handle_all(message):
     user_id = message.chat.id
     state = user_states.get(user_id, "chat")
 
-    # --- 1. Logika Pencarian Spotify ---
+    # --- 1. Logika Pencarian Spotify (Mode Terkunci) ---
     if state == "awaiting_music" and message.text:
         bot.reply_to(message, "🔍 Memeriksa langsung ke dalam server...")
         result = search_spotify_track(message.text)
@@ -189,7 +187,7 @@ def handle_all(message):
                     pass
             bot.send_message(user_id, "_(Mau cari lagu lain? Langsung ketik judulnya saja. Klik 💬 Chat untuk keluar.)_", parse_mode="Markdown")
 
-    # --- 2. Logika Download Media ---
+    # --- 2. Logika Download Media (Mode Terkunci) ---
     elif state == "awaiting_url" and message.text:
         bot.reply_to(message, "⏳ Sedang memproses link...")
         try:
@@ -207,7 +205,5 @@ def handle_all(message):
             os.remove(filename) 
             bot.send_message(user_id, "_(Kirim link lagi jika ingin download yang lain, atau klik 💬 Chat untuk keluar)_", parse_mode="Markdown")
         except Exception as e: 
-            bot.reply_to(message, "❌ Gagal mengunduh.\n_(Kirim link yang benar, atau klik 💬 Chat untuk keluar)_", parse_mode="Markdown")
-
-    # --- 3. Logika Analisis File / Foto
-    
+            bot.reply_to(message, "❌ Gagal mengunduh.\n_(Kirim link yang benar, atau klik 💬 Chat untuk keluar)_", parse_mode="
+        
