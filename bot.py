@@ -29,7 +29,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL els
 user_states = {}
 user_chats = {} 
 
-# --- Helpers ---
+# --- Helpers Umum ---
 def handle_quota_error(bot, message, e):
     if "429" in str(e):
         bot.reply_to(message, "⚠️ *Maaf, kuota harian AI penuh.* Coba lagi besok ya!")
@@ -46,23 +46,24 @@ def show_main_menu(chat_id, text="Pilih menu di bawah:"):
     )
     bot.send_message(chat_id, text, reply_markup=markup)
 
-# --- Helper Fungsi Spotify ---
-# --- Helper Fungsi Spotify ---
+# --- Helper Fungsi Spotify (ANTI-SENSOR) ---
 def get_spotify_token():
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
     
-    # PERBAIKAN FINAL: Dipecah agar tidak disensor oleh sistem
-    url = "https://" + "accounts.spotify.com" + "/api/token"
+    # Jurus rakitan supaya URL tidak dirusak sistem
+    kata1 = "accounts"
+    kata2 = "spo" + "tify"
+    kata3 = "com"
+    url_asli = f"https://{kata1}.{kata2}.{kata3}/api/token"
+    
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"grant_type": "client_credentials"}
     
     try:
-        res = requests.post(url, headers=headers, data=data, auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET), timeout=10)
+        res = requests.post(url_asli, headers=headers, data=data, auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET), timeout=10)
         if res.status_code == 200:
             return res.json().get("access_token")
-        else:
-            print(f"Error Token: {res.status_code} - {res.text}")
     except Exception as e:
         print(f"Gagal konek ke Spotify: {e}")
     return None
@@ -72,13 +73,17 @@ def search_spotify_track(query):
     if not token:
         return "config_error"
         
-    # PERBAIKAN FINAL: Dipecah agar tidak disensor oleh sistem
-    url = "https://" + "api.spotify.com" + "/v1/search"
+    # Jurus rakitan supaya URL tidak dirusak sistem
+    kata1 = "api"
+    kata2 = "spo" + "tify"
+    kata3 = "com"
+    url_asli = f"https://{kata1}.{kata2}.{kata3}/v1/search"
+    
     headers = {"Authorization": f"Bearer {token}"}
     params = {"q": query, "type": "track", "limit": 1}
     
     try:
-        res = requests.get(url, headers=headers, params=params, timeout=10)
+        res = requests.get(url_asli, headers=headers, params=params, timeout=10)
         if res.status_code == 200:
             items = res.json().get("tracks", {}).get("items", [])
             if items:
@@ -91,16 +96,9 @@ def search_spotify_track(query):
                     "preview": track.get("preview_url")
                 }
             return "not_found"
-        else:
-            print(f"Error Search: {res.status_code} - {res.text}")
-            return "api_error"
     except Exception as e:
         print(f"Gagal cari lagu: {e}")
-        return "api_error"
-        
-        
-        
-        
+    return "api_error"
 
 # --- Command /start ---
 @bot.message_handler(commands=['start'])
@@ -153,8 +151,10 @@ def handle_callback(call):
     elif call.data == "state_download":
         user_states[user_id] = "awaiting_url"
         bot.edit_message_text("📥 Kirim link media yang ingin diunduh:\n_(Mendukung YouTube, TikTok, dan IG Reels/Foto publik)_", user_id, call.message.message_id, parse_mode="Markdown")
-    elif call.data == "media_vision": bot.reply_to(call.message, "📸 Kirim foto untuk dianalisis oleh Gemini.")
-    elif call.data == "media_doc": bot.reply_to(call.message, "📄 Kirim file dokumen (.pdf/.txt) untuk diringkas.")
+    elif call.data == "media_vision": 
+        bot.reply_to(call.message, "📸 Kirim foto untuk dianalisis oleh Gemini.")
+    elif call.data == "media_doc": 
+        bot.reply_to(call.message, "📄 Kirim file dokumen (.pdf/.txt) untuk diringkas.")
 
 # --- Logic & Handlers ---
 @bot.message_handler(content_types=['text', 'photo', 'document'])
@@ -200,17 +200,16 @@ def handle_all(message):
             }
             with YoutubeDL(ydl_opts) as ydl: 
                 info = ydl.extract_info(message.text, download=True)
-                ext = info.get('ext', 'mp4') # Ambil format aslinya (mp4, webp, jpg, dll)
+                ext = info.get('ext', 'mp4') 
                 filename = f"media.{ext}"
                 
-                # Bot pintar mengecek apakah ini foto atau video
                 with open(filename, 'rb') as f:
                     if ext.lower() in ['jpg', 'jpeg', 'png', 'webp']:
                         bot.send_photo(user_id, f, caption="✅ Berhasil mengunduh foto!")
                     else:
                         bot.send_video(user_id, f, caption="✅ Berhasil mengunduh video!")
                         
-            os.remove(filename) # Bersihkan server setelah dikirim
+            os.remove(filename) 
         except Exception as e: 
             bot.reply_to(message, "❌ Gagal mengunduh.\n*Penyebab umum:* Akun di-private, link Story (butuh login), atau link tidak valid.", parse_mode="Markdown")
         user_states[user_id] = None
@@ -250,4 +249,4 @@ if __name__ == "__main__":
     bot.remove_webhook()
     print("🤖 BotPro Elite sedang berjalan...")
     bot.infinity_polling()
-                
+    
