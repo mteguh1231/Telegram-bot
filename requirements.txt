@@ -1,9 +1,11 @@
-pyTelegramBotAPI
-requests
-pillow
+pyTelegramBotAPI==4.14.0
 google-genai
+pillow
+rembg[cpu]
+opencv-python-headless
+numpy
+qrcode
 yt-dlp
-supabase
 pdf2docx
 PyMuPDF
 pdfplumber
