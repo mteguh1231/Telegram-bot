@@ -1,10 +1,8 @@
 pyTelegramBotAPI
 requests
-pillow
+Pillow
 google-genai
 yt-dlp
 duckduckgo-search
 supabase
-gTTS
 flask
-gunicorn
