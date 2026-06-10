@@ -22,7 +22,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     # Menggunakan model Gemini terbaru
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
+    ai_model = genai.GenerativeModel('gemini-pro')
 else:
     ai_model = None
     logging.warning("GEMINI_API_KEY tidak ditemukan! Fitur AI tidak akan berfungsi.")
