@@ -10,7 +10,6 @@ from google import genai
 from yt_dlp import YoutubeDL
 from supabase import create_client, Client
 
-# Mencoba import pdf2docx untuk fitur PDF ke Word
 try:
     from pdf2docx import Converter
 except ImportError:
@@ -20,8 +19,6 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
 bot = telebot.TeleBot(BOT_TOKEN)
 ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
@@ -29,187 +26,298 @@ ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 user_states = {}
 user_chats = {} 
 
+# --- Fungsi Efek Animasi "Wah" ---
+def animate_loading(chat_id, message_id, steps, delay=0.4):
+    """Membuat efek teks loading yang berubah secara dinamis untuk kesan premium"""
+    for step in steps:
+        try:
+            bot.edit_message_text(step, chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+            time.sleep(delay)
+        except Exception:
+            pass # Menghindari error jika proses asli terlalu cepat selesai
+
+# --- Helper Menu Utama ---
+def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di bawah ini:"):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(
+        types.KeyboardButton("💬 Chat AI"), 
+        types.KeyboardButton("📥 Downloader"),
+        types.KeyboardButton("📁 Convert File")
+    )
+    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
 # --- Handlers ---
 @bot.message_handler(commands=['start'])
 def start(m):
-    # Animasi Loading Start
-    loading_msg = bot.reply_to(m, "🔄 Menyiapkan sistem...")
-    time.sleep(0.5)
-    bot.edit_message_text("⚙️ Memuat menu...", chat_id=m.chat.id, message_id=loading_msg.message_id)
-    time.sleep(0.5)
+    # Animasi Loading Start Premium
+    loading_msg = bot.reply_to(m, "⚡ *Menginisialisasi Bot...* `[▒▒▒▒▒▒▒▒▒▒] 0%`", parse_mode="Markdown")
+    time.sleep(0.3)
+    bot.edit_message_text("⚙️ *Memuat Database & AI...* `[████▒▒▒▒▒▒] 40%`", chat_id=m.chat.id, message_id=loading_msg.message_id, parse_mode="Markdown")
+    time.sleep(0.3)
+    bot.edit_message_text("🚀 *Menyelaraskan Sistem...* `[████████▒▒] 80%`", chat_id=m.chat.id, message_id=loading_msg.message_id, parse_mode="Markdown")
+    time.sleep(0.3)
+    bot.edit_message_text("✨ *Sistem Siap!* `[██████████] 100%`", chat_id=m.chat.id, message_id=loading_msg.message_id, parse_mode="Markdown")
+    time.sleep(0.3)
     
     bot.delete_message(m.chat.id, loading_msg.message_id)
-    
-    # Menu Keyboard Utama
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(
-        types.KeyboardButton("💬 Chat"), 
-        types.KeyboardButton("📥 Download"),
-        types.KeyboardButton("🛠️ Tools")
-    )
-    
-    bot.send_message(m.chat.id, "🤖 *Bot siap digunakan!*\nSilakan pilih menu di bawah ini:", reply_markup=markup, parse_mode="Markdown")
+    send_main_menu(m.chat.id)
 
-@bot.message_handler(func=lambda m: m.text in ["💬 Chat", "📥 Download", "🛠️ Tools"])
+@bot.message_handler(func=lambda m: m.text in ["💬 Chat AI", "📥 Downloader", "📁 Convert File"])
 def menu(m):
-    if m.text == "💬 Chat": 
+    if m.text == "💬 Chat AI": 
         user_states[m.chat.id] = "chat"
-        bot.reply_to(m, "💬 *Mode Chat Aktif.*\nSilakan ngobrol dengan AI!", parse_mode="Markdown")
-    elif m.text == "📥 Download": 
-        user_states[m.chat.id] = "download"
-        bot.reply_to(m, "📥 *Mode Download Aktif.*\nKirim link video yang ingin diunduh:", parse_mode="Markdown")
-    elif m.text == "🛠️ Tools": 
-        user_states[m.chat.id] = "tools"
+        bot.reply_to(m, "💬 *Mode Chat AI Aktif.*\nSilakan kirimkan pertanyaan atau obrolan kamu!", parse_mode="Markdown")
         
-        # Membuat tombol pilihan (Inline Keyboard) khusus di dalam menu Tools
+    elif m.text == "📥 Downloader":
+        user_states[m.chat.id] = "downloader_menu"
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("🔺 YouTube Video/Shorts", callback_data="dl_yt"),
+            types.InlineKeyboardButton("⚫ TikTok Video", callback_data="dl_tt"),
+            types.InlineKeyboardButton("📸 Instagram Reel/Post", callback_data="dl_ig"),
+            types.InlineKeyboardButton("🔙 Kembali ke Menu Utama", callback_data="back_to_main")
+        )
+        bot.reply_to(m, "📥 *Premium Downloader Portal*\nPilih platform media yang ingin kamu unduh:", reply_markup=markup, parse_mode="Markdown")
+        
+    elif m.text == "📁 Convert File": 
+        user_states[m.chat.id] = "convert_menu"
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("📄 PDF ke Word (.docx)", callback_data="set_pdf2word"),
+            types.InlineKeyboardButton("📝 Word ke PDF (.pdf)", callback_data="set_word2pdf"),
+            types.InlineKeyboardButton("🖼️ Gambar Apapun ke JPG", callback_data="set_any2jpg"),
+            types.InlineKeyboardButton("🔙 Kembali ke Menu Utama", callback_data="back_to_main")
+        )
+        bot.reply_to(m, "📁 *File Converter Engine*\nSilakan tentukan jenis konversi dokumen/media kamu:", reply_markup=markup, parse_mode="Markdown")
+
+# --- Callbacks (Navigasi & Pilihan Sub-Menu) ---
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    cid = call.message.chat.id
+    mid = call.message.message_id
+    
+    # Fitur Back / Kembali ke Menu Utama
+    if call.data == "back_to_main":
+        user_states[cid] = "chat"
+        bot.delete_message(cid, mid)
+        send_main_menu(cid, text="🔙 *Kembali ke Menu Utama.*\nSilakan pilih fitur kembali:")
+        return
+
+    # Sub-Menu Downloader
+    if call.data in ["dl_yt", "dl_tt", "dl_ig"]:
+        platform = {"dl_yt": "YouTube", "dl_tt": "TikTok", "dl_ig": "Instagram"}[call.data]
+        user_states[cid] = call.data
+        
         markup = types.InlineKeyboardMarkup()
-        btn_pdf2word = types.InlineKeyboardButton("📄 PDF ke Word", callback_data="set_pdf2word")
-        btn_word2pdf = types.InlineKeyboardButton("📝 Word ke PDF", callback_data="set_word2pdf")
-        markup.add(btn_pdf2word, btn_word2pdf)
+        markup.add(types.InlineKeyboardButton("🔙 Kembali", callback_data="back_to_downloader"))
+        bot.edit_message_text(f"📥 *Mode Unduh {platform} Aktif.*\nSilakan kirimkan tautan/link video {platform} kamu!", cid, mid, reply_markup=markup, parse_mode="Markdown")
         
-        bot.reply_to(m, "🛠️ *Menu Pilihan Converter:*\nSilakan klik tombol di bawah ini sesuai kebutuhanmu:", reply_markup=markup, parse_mode="Markdown")
+    elif call.data == "back_to_downloader":
+        user_states[cid] = "downloader_menu"
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("🔺 YouTube Video/Shorts", callback_data="dl_yt"),
+            types.InlineKeyboardButton("⚫ TikTok Video", callback_data="dl_tt"),
+            types.InlineKeyboardButton("📸 Instagram Reel/Post", callback_data="dl_ig"),
+            types.InlineKeyboardButton("🔙 Kembali ke Menu Utama", callback_data="back_to_main")
+        )
+        bot.edit_message_text("📥 *Premium Downloader Portal*\nPilih platform media yang ingin kamu unduh:", cid, mid, reply_markup=markup, parse_mode="Markdown")
 
-# --- Handler untuk Menangkap Klik Tombol Pilihan Tools ---
-@bot.callback_query_handler(func=lambda call: call.data in ["set_pdf2word", "set_word2pdf"])
-def callback_tools(call):
-    if call.data == "set_pdf2word":
-        user_states[call.message.chat.id] = "pdf2word"
-        bot.edit_message_text("📄 *Mode PDF ke Word Aktif.*\nSilakan kirim file `.pdf` kamu ke sini!", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    elif call.data == "set_word2pdf":
-        user_states[call.message.chat.id] = "word2pdf"
-        bot.edit_message_text("📝 *Mode Word ke PDF Aktif.*\nSilakan kirim file `.docx` atau `.doc` kamu ke sini!", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    # Sub-Menu Converter
+    elif call.data in ["set_pdf2word", "set_word2pdf", "set_any2jpg"]:
+        user_states[cid] = call.data
+        info_text = {
+            "set_pdf2word": "📄 *Mode PDF ke Word Aktif.*\nKirimkan file dokumen berformat `.pdf` kamu!",
+            "set_word2pdf": "📝 *Mode Word ke PDF Aktif.*\nKirimkan file dokumen berformat `.docx` atau `.doc`!",
+            "set_any2jpg": "🖼️ *Mode Convert ke JPG Aktif.*\nKirimkan gambar jenis apa saja (PNG, WEBP, BMP, dll) sebagai *File/Document*!"
+        }[call.data]
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔙 Kembali", callback_data="back_to_convert"))
+        bot.edit_message_text(info_text, cid, mid, reply_markup=markup, parse_mode="Markdown")
+        
+    elif call.data == "back_to_convert":
+        user_states[cid] = "convert_menu"
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("📄 PDF ke Word (.docx)", callback_data="set_pdf2word"),
+            types.InlineKeyboardButton("📝 Word ke PDF (.pdf)", callback_data="set_word2pdf"),
+            types.InlineKeyboardButton("🖼️ Gambar Apapun ke JPG", callback_data="set_any2jpg"),
+            types.InlineKeyboardButton("🔙 Kembali ke Menu Utama", callback_data="back_to_main")
+        )
+        bot.edit_message_text("📁 *File Converter Engine*\nSilakan tentukan jenis konversi dokumen/media kamu:", cid, mid, reply_markup=markup, parse_mode="Markdown")
 
-# --- Handler Khusus untuk Mengolah File Dokumen (PDF / Word) ---
-@bot.message_handler(content_types=['document'])
-def handle_docs(m):
+# --- Handler Dokumen & Gambar (Proses Konversi File) ---
+@bot.message_handler(content_types=['document', 'photo'])
+def handle_files(m):
     state = user_states.get(m.chat.id, "chat")
     
-    # 1. LOGIKA FITUR PDF KE WORD
-    if state == "pdf2word":
+    # 1. CONVERT: PDF KE WORD
+    if state == "set_pdf2word" and m.document:
         if not m.document.file_name.lower().endswith('.pdf'):
-            bot.reply_to(m, "❌ Format salah! Harap kirimkan file dengan ekstensi `.pdf`")
+            bot.reply_to(m, "❌ *Format Gagal!* Sistem hanya menerima file berekstensi `.pdf`", parse_mode="Markdown")
             return
-            
-        loading_msg = bot.reply_to(m, "⏳ *Mengunduh file PDF dari Telegram...*", parse_mode="Markdown")
-        bot.send_chat_action(m.chat.id, 'upload_document')
         
+        loading_msg = bot.reply_to(m, "📥 *Mengunduh PDF dari cloud Telegram...*", parse_mode="Markdown")
         try:
-            file_info = bot.get_file(m.document.file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
+            file_path = bot.get_file(m.document.file_id).file_path
+            pdf_data = bot.download_file(file_path)
             
-            pdf_path = m.document.file_name
-            docx_path = pdf_path.rsplit('.', 1)[0] + '.docx'
+            in_file = m.document.file_name
+            out_file = in_file.rsplit('.', 1)[0] + '.docx'
             
-            with open(pdf_path, 'wb') as f:
-                f.write(downloaded_file)
+            with open(in_file, 'wb') as f: f.write(pdf_data)
                 
-            bot.edit_message_text("🔄 *Sedang mengonversi PDF ke Word (Docx)...*\n_Mohon tunggu sebentar..._", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            animate_loading(m.chat.id, loading_msg.message_id, [
+                "🔄 *Membaca struktur layout PDF...* `[▓▒▒▒▒▒▒▒▒▒]` 15%",
+                "⚡ *Mengekstrak teks & elemen tabel...* `[████▒▒▒▒▒▒]` 45%",
+                "📝 *Menyusun ulang ke dokumen Word...* `[████████▒▒]` 80%"
+            ])
             
-            # Eksekusi konversi pustaka pdf2docx
-            cv = Converter(pdf_path)
-            cv.convert(docx_path, start=0, end=None)
+            cv = Converter(in_file)
+            cv.convert(out_file, start=0, end=None)
             cv.close()
             
-            bot.edit_message_text("🚀 *Mengirim file hasil konversi...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text("🚀 *Konversi Selesai! Mengirimkan hasil...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            with open(out_file, 'rb') as doc:
+                bot.send_document(m.chat.id, doc, caption="✨ *Sukses konversi PDF ke Word!*")
             
-            with open(docx_path, 'rb') as doc:
-                bot.send_document(m.chat.id, doc, caption="✨ *Konversi PDF ke Word Selesai!*", parse_mode="Markdown")
-                
-            # Hapus file sementara di server biar gak penuh
-            os.remove(pdf_path)
-            os.remove(docx_path)
+            os.remove(in_file)
+            os.remove(out_file)
             bot.delete_message(m.chat.id, loading_msg.message_id)
-            
         except Exception as e:
-            bot.edit_message_text(f"❌ *Gagal konversi:* {str(e)}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Gagal Konversi:* {str(e)}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
-    # 2. LOGIKA FITUR WORD KE PDF
-    elif state == "word2pdf":
+    # 2. CONVERT: WORD KE PDF
+    elif state == "set_word2pdf" and m.document:
         if not (m.document.file_name.lower().endswith('.docx') or m.document.file_name.lower().endswith('.doc')):
-            bot.reply_to(m, "❌ Format salah! Harap kirimkan file berformat Word (`.docx` / `.doc`)")
+            bot.reply_to(m, "❌ *Format Gagal!* Kirimkan file dokumen Word (`.docx`/`.doc`)", parse_mode="Markdown")
             return
             
-        loading_msg = bot.reply_to(m, "⏳ *Mengunduh file Word dari Telegram...*", parse_mode="Markdown")
-        bot.send_chat_action(m.chat.id, 'upload_document')
-        
+        loading_msg = bot.reply_to(m, "📥 *Mengunduh file Word...*", parse_mode="Markdown")
         try:
-            file_info = bot.get_file(m.document.file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
+            file_path = bot.get_file(m.document.file_id).file_path
+            doc_data = bot.download_file(file_path)
             
-            docx_path = m.document.file_name
-            pdf_path = docx_path.rsplit('.', 1)[0] + '.pdf'
+            in_file = m.document.file_name
+            out_file = in_file.rsplit('.', 1)[0] + '.pdf'
             
-            with open(docx_path, 'wb') as f:
-                f.write(downloaded_file)
+            with open(in_file, 'wb') as f: f.write(doc_data)
                 
-            bot.edit_message_text("🔄 *Sedang mengonversi Word ke PDF via LibreOffice...*\n_Proses ini memakan waktu beberapa detik..._", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            animate_loading(m.chat.id, loading_msg.message_id, [
+                "🗃️ *Mempersiapkan LibreOffice Virtual Engine...* `[▒▒▒▒▒▒▒▒▒▒]` 10%",
+                "⚙️ *Rendering halaman dokumen...* `[█████▒▒▒▒▒]` 50%",
+                "📄 *Mengunci enkapsulasi objek PDF...* `[█████████▒]` 90%"
+            ])
             
-            # Eksekusi perintah CLI Linux LibreOffice untuk merubah Word ke PDF secara headless
-            cmd = ['libreoffice', '--headless', '--convert-to', 'pdf', docx_path]
-            subprocess.run(cmd, check=True, timeout=40)
+            subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', in_file], check=True, timeout=40)
             
-            bot.edit_message_text("🚀 *Mengirim file hasil konversi...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
-            
-            with open(pdf_path, 'rb') as pdf:
-                bot.send_document(m.chat.id, pdf, caption="✨ *Konversi Word ke PDF Selesai!*", parse_mode="Markdown")
+            bot.edit_message_text("🚀 *Konversi Selesai! Mengirimkan file...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            with open(out_file, 'rb') as pdf:
+                bot.send_document(m.chat.id, pdf, caption="✨ *Sukses konversi Word ke PDF!*")
                 
-            # Hapus file sementara di server
-            os.remove(docx_path)
-            os.remove(pdf_path)
+            os.remove(in_file)
+            os.remove(out_file)
             bot.delete_message(m.chat.id, loading_msg.message_id)
-            
         except Exception as e:
-            bot.edit_message_text(f"❌ *Gagal konversi:* {str(e)}\n\n_Catatan: Pastikan server hosting kamu sudah terinstall paket 'libreoffice'._", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
-            
-    else:
-        bot.reply_to(m, "💡 Kamu sedang tidak dalam mode konversi dokumen. Silakan pilih menu *🛠️ Tools* terlebih dahulu.", parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Gagal Konversi:* {str(e)}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
-# --- Handler Utama untuk Menangkap Input Teks ---
+    # 3. CONVERT: APAPUN KE JPG
+    elif state == "set_any2jpg":
+        # Menangani file gambar yang dikirim sebagai dokumen maupun photo biasa
+        file_id = m.document.file_id if m.document else m.photo[-1].file_id
+        orig_name = m.document.file_name if m.document else "image.png"
+        
+        loading_msg = bot.reply_to(m, "📥 *Mengunduh berkas gambar...*", parse_mode="Markdown")
+        try:
+            file_path = bot.get_file(file_id).file_path
+            img_data = bot.download_file(file_path)
+            
+            out_name = orig_name.rsplit('.', 1)[0] + '.jpg'
+            
+            animate_loading(m.chat.id, loading_msg.message_id, [
+                "🖼️ *Membuka kompresi piksel gambar...* `[███▒▒▒▒▒▒▒]` 30%",
+                "🎨 *Membangun matriks spektrum RGB baru...* `[███████▒▒▒]` 70%"
+            ], delay=0.3)
+            
+            img = Image.open(io.BytesIO(img_data))
+            # Konversi RGBA (transparan) ke RGB standar sebelum disimpan ke JPG
+            if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                bg = Image.new('RGB', img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+                img = bg
+            else:
+                img = img.convert('RGB')
+                
+            out_io = io.BytesIO()
+            img.save(out_io, format="JPEG", quality=95)
+            out_io.seek(0)
+            out_io.name = out_name
+            
+            bot.edit_message_text("🚀 *Mengirimkan hasil kompresi JPG...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            bot.send_document(m.chat.id, out_io, caption="✨ *Sukses konversi ke format JPG standard!*")
+            bot.delete_message(m.chat.id, loading_msg.message_id)
+        except Exception as e:
+            bot.edit_message_text(f"❌ *Gagal Konversi Gambar:* {str(e)}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            
+    elif state in ["convert_menu", "downloader_menu"]:
+        bot.reply_to(m, "⚠️ *Aksi Ditolak.* Harap pilih opsi sub-menu di tombol inline terlebih dahulu.", parse_mode="Markdown")
+
+# --- Handler Utama Teks (Proses Chat & Downloader) ---
 @bot.message_handler(content_types=['text'])
-def handle(m):
+def handle_text(m):
     state = user_states.get(m.chat.id, "chat")
     
-    # --- FITUR DOWNLOAD VIDEO ---
-    if state == "download":
+    # LOGIKA PENGUNDUH MEDIA (YOUTUBE, TIKTOK, INSTAGRAM)
+    if state in ["dl_yt", "dl_tt", "dl_ig"]:
+        platform_names = {"dl_yt": "YouTube", "dl_tt": "TikTok", "dl_ig": "Instagram"}
+        p_name = platform_names[state]
+        
+        loading_msg = bot.reply_to(m, f"⏳ *[1/3] Menghubungkan ke API {p_name}...* `[▒▒▒▒▒▒▒▒▒▒]`", parse_mode="Markdown")
+        bot.send_chat_action(m.chat.id, 'record_video')
+        
         try:
-            loading_msg = bot.reply_to(m, "⏳ *Memproses link...*", parse_mode="Markdown")
-            bot.send_chat_action(m.chat.id, 'record_video')
+            animate_loading(m.chat.id, loading_msg.message_id, [
+                f"📡 *[2/3] Membuka bypass enkripsi {p_name}...* `[█████▒▒▒▒▒]`",
+                "⚡ *[3/3] Streaming paket data video ke server...* `[█████████▒]`"
+            ], delay=0.5)
             
-            ydl_opts = {'format': 'best', 'outtmpl': 'media.mp4', 'quiet': True}
+            out_filename = f"media_{m.chat.id}.mp4"
+            ydl_opts = {'format': 'best', 'outtmpl': out_filename, 'quiet': True}
+            
             with YoutubeDL(ydl_opts) as ydl: 
                 ydl.download([m.text])
                 
-            bot.edit_message_text("🚀 *Mengirim video...*", chat_id=m.chat.id, message_id=loading_msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text("🚀 *Proses Selesai! Mengunggah klip ke Telegram...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             bot.send_chat_action(m.chat.id, 'upload_video')
             
-            with open('media.mp4', 'rb') as f: 
-                bot.send_video(m.chat.id, f)
-            os.remove('media.mp4')
-            
+            with open(out_filename, 'rb') as f: 
+                bot.send_video(m.chat.id, f, caption=f"✨ Video {p_name} berhasil diunduh!")
+                
+            os.remove(out_filename)
             bot.delete_message(m.chat.id, loading_msg.message_id)
-            bot.send_message(m.chat.id, "💡 _Kirim link lagi untuk download video lain._", parse_mode="Markdown")
+            
         except Exception as e: 
-            bot.edit_message_text("❌ *Gagal mengunduh.* Pastikan link valid.", chat_id=m.chat.id, message_id=loading_msg.message_id, parse_mode="Markdown")
-    
-    # --- INFO REKONDISI JIKA USER MASUKIN TEKS SAAT MODE TOOLS ---
-    elif state in ["pdf2word", "word2pdf", "tools"]:
-        bot.reply_to(m, "⚠️ Kamu sedang dalam mode Alat Converter. *Harap kirimkan file dokumen*, bukan pesan teks.\n\n_Klik menu '💬 Chat' jika ingin kembali mengobrol dengan AI._", parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Gagal mengunduh!* Pastikan link {p_name} valid atau coba link video lainnya.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
-    # --- FITUR CHAT AI (DEFAULT) ---
+    # LOGIKA RE-KONDISI JIKA USER MASUKIN TEKS SAAT MODE PILIHAN FILE
+    elif state in ["set_pdf2word", "set_word2pdf", "convert_menu", "downloader_menu"]:
+        bot.reply_to(m, "⚠️ Harap kirimkan berkas/file media yang sesuai, bukan instruksi teks.\n_Klik menu '💬 Chat AI' untuk mengobrol._", parse_mode="Markdown")
+    
+    # CHAT AI UTAMA (DEFAULT STATE)
     elif state == "chat":
         if m.chat.id not in user_chats: 
             user_chats[m.chat.id] = ai_client.chats.create(model="gemini-2.5-flash")
         
+        loading_msg = bot.reply_to(m, "💭 *AI sedang merangkai jawaban...*", parse_mode="Markdown")
+        bot.send_chat_action(m.chat.id, 'typing')
         try:
-            loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
-            bot.send_chat_action(m.chat.id, 'typing')
-            
             reply_text = user_chats[m.chat.id].send_message(m.text).text
             bot.edit_message_text(reply_text, chat_id=m.chat.id, message_id=loading_msg.message_id)
-        except Exception as e:
-            bot.edit_message_text("❌ Maaf, sistem AI sedang mengalami kendala.", chat_id=m.chat.id, message_id=loading_msg.message_id)
+        except Exception:
+            bot.edit_message_text("❌ Jaringan AI sedang sibuk. Coba sesaat lagi.", chat_id=m.chat.id, message_id=loading_msg.message_id)
 
 if __name__ == "__main__": 
-    print("Bot Converter & AI sedang berjalan...")
+    print("Bot Terstruktur Premium Aktif...")
     bot.infinity_polling()
-    
+            
