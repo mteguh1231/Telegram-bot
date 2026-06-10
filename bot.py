@@ -104,9 +104,14 @@ def handle_chat(message):
             final_prompt = query
             
         bot.reply_to(message, user_chats[message.chat.id].send_message(final_prompt).text, parse_mode="Markdown")
-    except:
-        bot.reply_to(message, "Server sibuk.")
-
+        except Exception as e:
+        # Menangkap error 429 secara spesifik
+        if "429" in str(e):
+            bot.reply_to(message, "Wah, kuota AI-ku sedang terpakai banyak nih! Tunggu 1 menit lagi ya, biar aku bisa 'nafas' dulu. 😅")
+        else:
+            bot.reply_to(message, "Server sedang sibuk. Coba lagi nanti ya.")
+        logging.error(f"Error Chat: {e}")
+    
 # ==========================================
 # Telinga AI (Voice Note)
 # ==========================================
