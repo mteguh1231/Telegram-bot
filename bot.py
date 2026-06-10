@@ -156,7 +156,7 @@ def handle_all(message):
         try:
             # PERBAIKAN & UBAH PERTAMA: Cek apakah user sudah punya sesi chat berjalan
             if user_id not in user_chats:
-                user_chats[user_id] = ai_client.chats.create(model="gemini-3.1-pro-preview")
+                user_chats[user_id] = ai_client.chats.create(model="gemini-3-flash")
             
             # Kirim pesan ke sesi chat yang sama agar ingat konteks obrolan sebelumnya
             res = user_chats[user_id].send_message(message.text)
