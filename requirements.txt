@@ -1,6 +1,7 @@
 pyTelegramBotAPI
 requests
-Pillow
+pillow
 google-genai
 yt-dlp
 supabase
+pdf2docx
