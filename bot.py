@@ -90,16 +90,22 @@ def handle_image_generation(message):
     msg_tunggu = bot.reply_to(message, "🎨 Sedang melukis gambar... Mohon tunggu sebentar.")
     
     try:
-        # Mengubah spasi dan karakter khusus agar aman untuk URL
         safe_prompt = requests.utils.quote(prompt)
         image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?nologo=true"
         
-        # Mengirimkan gambar langsung dari URL tersebut
-        bot.send_photo(message.chat.id, image_url, caption=f"🎨 Hasil dari: *{prompt}*", parse_mode="Markdown")
+        # PERUBAHAN: Bot mengunduh gambarnya dulu secara diam-diam
+        gambar_diunduh = requests.get(image_url)
+        
+        if gambar_diunduh.status_code == 200:
+            bot.send_photo(message.chat.id, gambar_diunduh.content, caption=f"🎨 Hasil dari: *{prompt}*", parse_mode="Markdown")
+        else:
+            bot.reply_to(message, "Maaf, server pelukis sedang sibuk. Coba lagi nanti.")
+            
         bot.delete_message(message.chat.id, msg_tunggu.message_id)
     except Exception as e:
-        bot.reply_to(message, "Maaf, AI gagal membuat gambar. Coba deskripsi yang lain.")
+        bot.reply_to(message, "Maaf, terjadi kesalahan teknis saat membuat gambar.")
         logging.error(f"Error Image Gen: {e}")
+        
 
 # ==========================================
 # Sosmed Downloader
