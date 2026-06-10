@@ -4,3 +4,4 @@ google-genai
 pillow
 gTTS
 yt-dlp
+duckduckgo-search
