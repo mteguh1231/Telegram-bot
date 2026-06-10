@@ -4,22 +4,23 @@ import logging
 import telebot
 import requests
 import time
+import threading
 import xml.etree.ElementTree as ET
-from flask import Flask, request
+from flask import Flask
 from PIL import Image
 from google import genai
 from google.genai import types
 from yt_dlp import YoutubeDL
 from duckduckgo_search import DDGS
 from supabase import create_client, Client
-from gtts import gTTS
 
 # --- Setup ---
+logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+ADMIN_ID = "5973565109"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
@@ -43,10 +44,16 @@ def search_internet(query):
             return "\n\n".join([f"Sumber: {r['href']}\nInfo: {r['body']}" for r in results]) if results else "Info tidak ditemukan."
     except: return "Gagal akses internet."
 
+def daily_scheduler():
+    while True:
+        time.sleep(86400) # Tidur 24 jam
+        try: bot.send_message(ADMIN_ID, "☀️ BotPro masih aktif dan siap melayani!")
+        except: pass
+
 # --- Handlers ---
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "BotPro Webhook Aktif! Saya siap membantu.")
+    bot.reply_to(message, "BotPro Master Aktif! Semua fitur siap digunakan.")
 
 @bot.message_handler(commands=['cuaca', 'berita', 'quote', 'reset'])
 def handle_commands(message):
@@ -64,6 +71,9 @@ def handle_commands(message):
             teks = "📰 *Top Berita:*\n\n" + "".join([f"{i}. {item.find('title').text}\n" for i, item in enumerate(root.findall('./channel/item')[:5], 1)])
             bot.reply_to(message, teks, parse_mode="Markdown")
         except: bot.reply_to(message, "Gagal ambil berita.")
+    elif cmd == '/quote':
+        data = requests.get("https://dummyjson.com/quotes/random").json()
+        bot.reply_to(message, f"💡 _{data['quote']}_ \n— *{data['author']}*", parse_mode="Markdown")
     elif cmd == '/reset':
         bot.reply_to(message, "Memori sesi lokal di-reset.")
 
@@ -117,16 +127,15 @@ def handle_chat(message):
     simpan_chat(user_id, message.text, res.text)
     bot.reply_to(message, res.text)
 
-# --- Webhook ---
-@app.route('/' + BOT_TOKEN, methods=['POST'])
-def get_message():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
-    return "!", 200
+# --- Server ---
+@app.route('/')
+def index(): return "Bot is running!"
+
+def run_bot():
+    bot.remove_webhook()
+    bot.infinity_polling()
 
 if __name__ == "__main__":
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    threading.Thread(target=daily_scheduler, daemon=True).start()
+    threading.Thread(target=run_bot, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-            
