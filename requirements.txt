@@ -3,5 +3,4 @@ requests
 Pillow
 google-genai
 yt-dlp
-duckduckgo-search
 supabase
