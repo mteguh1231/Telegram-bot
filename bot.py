@@ -95,7 +95,7 @@ def send_welcome(message):
         "Asisten AI pribadi Anda (Powered by Gemini 2.5 Flash).\n\n"
         "🚀 *Kemampuan saya:*\n"
         "• 💬 *Chat:* Ngobrol pintar dan tanya jawab dengan AI.\n"
-        "• 🧰 *Tools:* Download video, analisis foto, ringkas dokumen.\n"
+        "• 🧰 *Tools:* Download Media (YT, IG, TikTok), analisis foto, ringkas dokumen.\n"
         "• 🎵 *Musik:* Cari lagu dan dengerin preview Spotify!\n\n"
         "Gunakan tombol di bawah untuk mulai beraksi."
     )
@@ -116,7 +116,7 @@ def handle_menu_click(message):
     elif message.text == "🧰 Tools":
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("📥 Download Video", callback_data="state_download"),
+            types.InlineKeyboardButton("📥 Download Media (YT/IG/TikTok)", callback_data="state_download"),
             types.InlineKeyboardButton("👁️ Analisis Foto", callback_data="media_vision"),
             types.InlineKeyboardButton("📄 Ringkas Dokumen", callback_data="media_doc"),
             types.InlineKeyboardButton("⬅️ Kembali", callback_data="cmd_back")
@@ -136,7 +136,7 @@ def handle_callback(call):
         show_main_menu(user_id, "Kembali ke Menu Utama.")
     elif call.data == "state_download":
         user_states[user_id] = "awaiting_url"
-        bot.edit_message_text("📥 Kirim link video (YouTube/Tiktok/IG):", user_id, call.message.message_id)
+        bot.edit_message_text("📥 Kirim link media yang ingin diunduh:\n_(Mendukung YouTube, TikTok, dan IG Reels/Foto publik)_", user_id, call.message.message_id, parse_mode="Markdown")
     elif call.data == "media_vision": bot.reply_to(call.message, "📸 Kirim foto untuk dianalisis oleh Gemini.")
     elif call.data == "media_doc": bot.reply_to(call.message, "📄 Kirim file dokumen (.pdf/.txt) untuk diringkas.")
 
@@ -172,15 +172,31 @@ def handle_all(message):
                     pass
         user_states[user_id] = None
 
-    # Logika Download Video
+    # Logika Download Media (Support Foto IG & Video IG/TikTok/YT)
     elif state == "awaiting_url" and message.text:
-        bot.reply_to(message, "⏳ Sedang memproses download... Mohon tunggu.")
+        bot.reply_to(message, "⏳ Sedang memproses link... (Bisa agak lama untuk IG/TikTok)")
         try:
-            ydl_opts = {'format': 'best', 'outtmpl': 'vid.%(ext)s'}
-            with YoutubeDL(ydl_opts) as ydl: info = ydl.extract_info(message.text, download=True)
-            with open(f"vid.{info['ext']}", 'rb') as v: bot.send_video(user_id, v)
-            os.remove(f"vid.{info['ext']}")
-        except: bot.reply_to(message, "❌ Gagal. Link mungkin tidak didukung atau video terlalu besar.")
+            ydl_opts = {
+                'format': 'best', 
+                'outtmpl': 'media.%(ext)s',
+                'quiet': True,
+                'no_warnings': True
+            }
+            with YoutubeDL(ydl_opts) as ydl: 
+                info = ydl.extract_info(message.text, download=True)
+                ext = info.get('ext', 'mp4') # Ambil format aslinya (mp4, webp, jpg, dll)
+                filename = f"media.{ext}"
+                
+                # Bot pintar mengecek apakah ini foto atau video
+                with open(filename, 'rb') as f:
+                    if ext.lower() in ['jpg', 'jpeg', 'png', 'webp']:
+                        bot.send_photo(user_id, f, caption="✅ Berhasil mengunduh foto!")
+                    else:
+                        bot.send_video(user_id, f, caption="✅ Berhasil mengunduh video!")
+                        
+            os.remove(filename) # Bersihkan server setelah dikirim
+        except Exception as e: 
+            bot.reply_to(message, "❌ Gagal mengunduh.\n*Penyebab umum:* Akun di-private, link Story (butuh login), atau link tidak valid.", parse_mode="Markdown")
         user_states[user_id] = None
         
     # Logika Analisis File / Foto (Gemini Vision & Doc)
