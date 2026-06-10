@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from PIL import Image
 from google import genai
 from gtts import gTTS
-from yt_dlp import YoutubeDL # <--- Library Downloader Baru
+from yt_dlp import YoutubeDL
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,10 +34,11 @@ else:
 def send_welcome(message):
     teks = (
         f"Halo *{message.from_user.first_name}*! 👋\n\n"
-        "Saya adalah bot AI Super V5. Perintah yang tersedia:\n\n"
+        "Saya adalah bot AI Super V6. Perintah yang tersedia:\n\n"
         "🤖 *Chat:* Ngobrol biasa (punya memori)\n"
         "🗣️ */suara <tanya>:* Dibalas pakai Voice Note\n"
-        "📥 */download <link>:* Unduh video (YT/TikTok/IG)\n"
+        "🎨 */gambar <teks>:* AI Pembuat Gambar\n"
+        "📥 */download <link>:* Unduh video (YT/TikTok)\n"
         "👁️ *Vision:* Kirim foto untuk dianalisa AI\n"
         "🌤️ */cuaca <kota>* - Info cuaca\n"
         "📰 */berita* - Berita CNN\n"
@@ -75,20 +76,45 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR BARU 4: Sosmed Downloader
+# FITUR BARU 5: AI Image Generator
+# ==========================================
+@bot.message_handler(commands=['gambar'])
+def handle_image_generation(message):
+    try:
+        prompt = message.text.split(" ", 1)[1]
+    except IndexError:
+        bot.reply_to(message, "Format salah.\nContoh: `/gambar kucing pakai kacamata hitam di pantai`", parse_mode="Markdown")
+        return
+
+    bot.send_chat_action(message.chat.id, 'upload_photo')
+    msg_tunggu = bot.reply_to(message, "🎨 Sedang melukis gambar... Mohon tunggu sebentar.")
+    
+    try:
+        # Mengubah spasi dan karakter khusus agar aman untuk URL
+        safe_prompt = requests.utils.quote(prompt)
+        image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?nologo=true"
+        
+        # Mengirimkan gambar langsung dari URL tersebut
+        bot.send_photo(message.chat.id, image_url, caption=f"🎨 Hasil dari: *{prompt}*", parse_mode="Markdown")
+        bot.delete_message(message.chat.id, msg_tunggu.message_id)
+    except Exception as e:
+        bot.reply_to(message, "Maaf, AI gagal membuat gambar. Coba deskripsi yang lain.")
+        logging.error(f"Error Image Gen: {e}")
+
+# ==========================================
+# Sosmed Downloader
 # ==========================================
 @bot.message_handler(commands=['download'])
 def handle_download(message):
     try:
         url = message.text.split(" ", 1)[1]
     except IndexError:
-        bot.reply_to(message, "Format salah. Coba: `/download <link_video_tiktok_atau_youtube>`", parse_mode="Markdown")
+        bot.reply_to(message, "Format salah. Coba: `/download <link>`", parse_mode="Markdown")
         return
 
-    msg_tunggu = bot.reply_to(message, "⏳ Sedang memproses video... (Bisa memakan waktu beberapa menit tergantung ukuran)")
+    msg_tunggu = bot.reply_to(message, "⏳ Sedang memproses video...")
     bot.send_chat_action(message.chat.id, 'upload_video')
 
-    # Setting yt-dlp (Maksimal 50MB, usahakan format mp4)
     ydl_opts = {
         'format': 'best[filesize<50M]',
         'outtmpl': f'video_{message.chat.id}.%(ext)s',
@@ -102,14 +128,12 @@ def handle_download(message):
             filename = ydl.prepare_filename(info)
             
         with open(filename, 'rb') as video:
-            bot.send_video(message.chat.id, video, caption="🎥 Ini videonya! Diunduh oleh Bot Supermu.")
+            bot.send_video(message.chat.id, video, caption="🎥 Berhasil diunduh!")
         
-        os.remove(filename) # Langsung hapus dari server setelah dikirim
-        bot.delete_message(message.chat.id, msg_tunggu.message_id) # Hapus pesan "tunggu"
-        
+        os.remove(filename)
+        bot.delete_message(message.chat.id, msg_tunggu.message_id)
     except Exception as e:
-        bot.reply_to(message, "❌ Gagal! Mungkin video terlalu besar (>50MB), diprivasi, atau link tidak didukung.")
-        logging.error(f"Error Downloader: {e}")
+        bot.reply_to(message, "❌ Gagal! Video mungkin terlalu besar/diprivasi.")
 
 # ==========================================
 # Voice AI (Text to Speech)
@@ -162,6 +186,6 @@ def handle_chat(message):
         bot.reply_to(message, "Server Google sedang sibuk.")
 
 if __name__ == "__main__":
-    logging.info("Bot Super V5 (ALL FITUR) berjalan...")
+    logging.info("Bot Super V6 (IMAGE GEN) berjalan...")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
         
