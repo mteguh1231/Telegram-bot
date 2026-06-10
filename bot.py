@@ -76,28 +76,41 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR: Telinga AI (Mendengar Voice Note)
+# FITUR: Telinga AI (Mendengar Voice Note) - REVISED
 # ==========================================
 @bot.message_handler(content_types=['voice'])
 def handle_voice_chat(message):
     if not ai_client: return
+    
     bot.send_chat_action(message.chat.id, 'typing')
     try:
+        # 1. Download Voice Note dari Telegram
         file_info = bot.get_file(message.voice.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
+        
+        # 2. Simpan sementara di server
         nama_file_audio = f"vn_{message.chat.id}.ogg"
         with open(nama_file_audio, 'wb') as new_file:
             new_file.write(downloaded_file)
-        audio_upload = ai_client.files.upload(file=nama_file_audio)
+            
+        # 3. Upload file audio ke otak Google Gemini dengan Label "audio/ogg"
+        audio_upload = ai_client.files.upload(file=nama_file_audio, mime_type="audio/ogg")
+        
+        # 4. Kirim audio tersebut ke dalam ruang memori obrolan kita
         if message.chat.id not in user_chats:
             user_chats[message.chat.id] = ai_client.chats.create(model="gemini-2.5-flash")
+            
         instruksi = "Tolong dengarkan dan balas pesan suara ini dalam bahasa Indonesia."
         response = user_chats[message.chat.id].send_message([audio_upload, instruksi])
+        
+        # 5. Balas pesannya ke user dan hapus file sampah di server
         bot.reply_to(message, response.text, parse_mode="Markdown")
         os.remove(nama_file_audio)
+        
     except Exception as e:
         bot.reply_to(message, "Maaf, telinga AI sedang berdengung.")
         logging.error(f"Error Voice Chat: {e}")
+        
 
 # ==========================================
 # Sosmed Downloader
