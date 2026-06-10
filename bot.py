@@ -22,7 +22,7 @@ ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL else None
 
 user_states = {}
-# TAMBAHAN: Dictionary untuk menyimpan sesi chat Gemini per user agar bot punya ingatan
+# Dictionary untuk menyimpan sesi chat Gemini per user agar bot punya ingatan
 user_chats = {} 
 
 # --- Helpers ---
@@ -50,7 +50,7 @@ def send_welcome(message):
         "✨ *Selamat Datang di BotPro Elite!*\n\n"
         "Saya adalah asisten AI pribadi Anda yang siap membantu 24/7.\n\n"
         "🚀 *Kemampuan saya:*\n"
-        "• 🤖 *AI Chat:* Analisis teks & jawaban cerdas (Gemini 3.1 Pro).\n"
+        "• 🤖 *AI Chat:* Analisis teks & jawaban cerdas (Gemini 2.5 Flash).\n"
         "• 🌍 *Info:* Cuaca, berita, dan quotes.\n"
         "• 🧰 *Tools:* Download video, analisis foto, ringkas dokumen.\n\n"
         "Gunakan tombol di bawah untuk mulai beraksi."
@@ -85,7 +85,7 @@ def handle_menu_click(message):
         )
         bot.reply_to(message, "🧰 *Pusat Alat Media:*", reply_markup=markup, parse_mode="Markdown")
     elif message.text == "⚙️ Reset":
-        # PERBAIKAN: Sekarang tombol Reset benar-benar menghapus memori chat AI juga
+        # Tombol Reset menghapus memori chat AI juga
         if user_id in user_chats:
             del user_chats[user_id]
         bot.reply_to(message, "⚙️ Sesi memori chat AI dan lokal berhasil di-reset!")
@@ -139,24 +139,24 @@ def handle_all(message):
                 with open(nama, 'wb') as f: f.write(bot.download_file(file_info.file_path))
                 doc = ai_client.files.upload(file=nama)
                 
-                # UBAH KEDUA: Menggunakan model gemini-3.1-pro-preview untuk dokumen
-                res = ai_client.chats.create(model="gemini-3").send_message([doc, "Ringkas ini."])
+                # PERBAIKAN: Menggunakan model gemini-2.5-flash untuk analisis dokumen
+                res = ai_client.models.generate_content(model="gemini-2.5-flash", contents=[doc, "Ringkas ini."])
                 bot.reply_to(message, res.text)
                 os.remove(nama)
             else:
                 file_info = bot.get_file(message.photo[-1].file_id)
                 img = Image.open(io.BytesIO(bot.download_file(file_info.file_path)))
                 
-                # UBAH KETIGA: Menggunakan model gemini-3.1-pro-preview untuk foto
-                res = ai_client.models.generate_content(model="gemini-3-flash", contents=[img, "Jelaskan gambar ini"])
+                # PERBAIKAN: Menggunakan model gemini-2.5-flash untuk foto
+                res = ai_client.models.generate_content(model="gemini-2.5-flash", contents=[img, "Jelaskan gambar ini"])
                 bot.reply_to(message, res.text)
         except Exception as e: handle_quota_error(bot, message, e)
         
     elif message.text and not message.text.startswith('/'):
         try:
-            # PERBAIKAN & UBAH PERTAMA: Cek apakah user sudah punya sesi chat berjalan
+            # PERBAIKAN: Menggunakan model gemini-2.5-flash untuk sesi chat teks
             if user_id not in user_chats:
-                user_chats[user_id] = ai_client.chats.create(model="gemini-3-flash")
+                user_chats[user_id] = ai_client.chats.create(model="gemini-2.5-flash")
             
             # Kirim pesan ke sesi chat yang sama agar ingat konteks obrolan sebelumnya
             res = user_chats[user_id].send_message(message.text)
@@ -166,4 +166,4 @@ def handle_all(message):
 if __name__ == "__main__":
     bot.remove_webhook()
     bot.infinity_polling()
-    
+                
