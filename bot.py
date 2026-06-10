@@ -76,7 +76,7 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR BARU 5: AI Image Generator
+# FITUR BARU 5: AI Image Generator (Versi Anti-Blokir)
 # ==========================================
 @bot.message_handler(commands=['gambar'])
 def handle_image_generation(message):
@@ -93,18 +93,25 @@ def handle_image_generation(message):
         safe_prompt = requests.utils.quote(prompt)
         image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?nologo=true"
         
-        # PERUBAHAN: Bot mengunduh gambarnya dulu secara diam-diam
-        gambar_diunduh = requests.get(image_url)
+        # PERUBAHAN: Menyamar sebagai browser Chrome PC agar tidak diblokir
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        
+        # Mengunduh gambar dengan membawa "KTP" penyamaran
+        gambar_diunduh = requests.get(image_url, headers=headers)
         
         if gambar_diunduh.status_code == 200:
             bot.send_photo(message.chat.id, gambar_diunduh.content, caption=f"🎨 Hasil dari: *{prompt}*", parse_mode="Markdown")
         else:
-            bot.reply_to(message, "Maaf, server pelukis sedang sibuk. Coba lagi nanti.")
+            # Jika masih gagal, bot akan memberitahu angka kode error-nya
+            bot.reply_to(message, f"Maaf, server pelukis menolak. (Kode Error: {gambar_diunduh.status_code})")
             
         bot.delete_message(message.chat.id, msg_tunggu.message_id)
     except Exception as e:
         bot.reply_to(message, "Maaf, terjadi kesalahan teknis saat membuat gambar.")
         logging.error(f"Error Image Gen: {e}")
+        
         
 
 # ==========================================
