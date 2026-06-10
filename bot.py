@@ -6,6 +6,7 @@ import requests
 import xml.etree.ElementTree as ET
 from PIL import Image
 from google import genai
+from gtts import gTTS # <--- Library Pita Suara Baru
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,10 +20,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ==========================================
 # Inisialisasi AI & Memori
-# ==========================================
-# Dictionary untuk menyimpan memori obrolan setiap user
 user_chats = {}
 
 if GEMINI_API_KEY:
@@ -32,20 +30,20 @@ else:
     logging.warning("GEMINI_API_KEY tidak ditemukan!")
 
 # ==========================================
-# Command Dasar (/start, /help, /cuaca, /berita, /quote)
-# (Tidak ada yang berubah di bagian ini)
+# Command Dasar
 # ==========================================
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     teks = (
         f"Halo *{message.from_user.first_name}*! 👋\n\n"
-        "Saya adalah bot AI bertenaga memori & visi. Perintah yang tersedia:\n\n"
-        "🤖 *Chat:* Ngobrol biasa, saya akan mengingat konteksnya.\n"
-        "👁️ *Vision:* Kirim foto (dengan caption) untuk saya analisa.\n"
-        "🌤️ */cuaca <kota>* - Cek cuaca\n"
+        "Saya adalah bot AI Super V4. Perintah yang tersedia:\n\n"
+        "🤖 *Chat Teks:* Ngobrol biasa (punya memori)\n"
+        "🗣️ */suara <tanya>:* AI membalas pakai Voice Note\n"
+        "👁️ *Vision:* Kirim foto + caption untuk dianalisa\n"
+        "🌤️ */cuaca <kota>* - Info cuaca\n"
         "📰 */berita* - Berita CNN\n"
         "💡 */quote* - Quote acak\n"
-        "🧹 */reset* - Menghapus memori obrolan kita"
+        "🧹 */reset* - Hapus memori"
     )
     bot.reply_to(message, teks, parse_mode="Markdown")
 
@@ -84,9 +82,6 @@ def cek_quote(message):
     except Exception:
         bot.reply_to(message, "Sedang kehabisan kata-kata.")
 
-# ==========================================
-# FITUR BARU 1: Reset Memori
-# ==========================================
 @bot.message_handler(commands=['reset'])
 def reset_memory(message):
     user_id = message.chat.id
@@ -95,64 +90,87 @@ def reset_memory(message):
     bot.reply_to(message, "🧹 Memori obrolan kita sudah dihapus. Mari mulai dari awal!")
 
 # ==========================================
-# FITUR BARU 2: AI Vision (Menangani Gambar/Foto)
+# FITUR BARU 3: Voice Note AI (Text-to-Speech)
 # ==========================================
-@bot.message_handler(content_types=['photo'])
-def handle_ai_vision(message):
+@bot.message_handler(commands=['suara'])
+def handle_voice_ai(message):
     if not ai_client:
         bot.reply_to(message, "Sistem AI belum aktif.")
         return
 
-    bot.send_chat_action(message.chat.id, 'typing')
     try:
-        # Ambil pertanyaan dari caption foto, jika kosong beri default
-        prompt = message.caption if message.caption else "Tolong jelaskan secara detail apa yang ada di gambar ini."
-        
-        # Proses download foto dari Telegram
-        file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        # Ubah gambar ke format yang dikenali AI
-        img = Image.open(io.BytesIO(downloaded_file))
-        
-        # Kirim gambar + prompt ke AI
+        # Mengambil pertanyaan setelah kata /suara
+        pertanyaan = message.text.split(" ", 1)[1]
+    except IndexError:
+        bot.reply_to(message, "Format salah. Coba ketik:\n`/suara Ceritakan dongeng kancil singkat`", parse_mode="Markdown")
+        return
+
+    # Memberi efek di Telegram bahwa bot sedang "Merekam Suara"
+    bot.send_chat_action(message.chat.id, 'record_voice')
+    
+    try:
+        # Dapatkan teks jawaban dari AI
         response = ai_client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=[img, prompt]
+            contents=f"Jawab dengan singkat dan padat (maksimal 3 paragraf) untuk diubah menjadi suara: {pertanyaan}"
         )
-        bot.reply_to(message, response.text, parse_mode="Markdown")
+        jawaban_teks = response.text
+
+        # Proses mengubah teks menjadi file suara (Bahasa Indonesia)
+        tts = gTTS(text=jawaban_teks, lang='id')
+        nama_file = f"suara_{message.chat.id}.ogg"
+        tts.save(nama_file)
+
+        # Kirim voice note ke pengguna
+        with open(nama_file, 'rb') as voice_file:
+            bot.send_voice(message.chat.id, voice_file, caption="🎙️ Jawaban AI")
+            
+        # Hapus file suara dari server agar tidak membuat server penuh
+        os.remove(nama_file)
+        
     except Exception as e:
-        bot.reply_to(message, "Maaf, gagal menganalisa gambar. Pastikan resolusinya tidak kebesaran.")
-        logging.error(f"Error AI Vision: {e}")
+        bot.reply_to(message, "Maaf, pita suara saya sedang serak. Terjadi kesalahan.")
+        logging.error(f"Error Voice AI: {e}")
 
 # ==========================================
-# UPGRADE: Chat AI dengan Memori (Contextual)
+# AI Vision (Menangani Gambar/Foto)
+# ==========================================
+@bot.message_handler(content_types=['photo'])
+def handle_ai_vision(message):
+    if not ai_client:
+        return
+    bot.send_chat_action(message.chat.id, 'typing')
+    try:
+        prompt = message.caption if message.caption else "Jelaskan gambar ini"
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        img = Image.open(io.BytesIO(downloaded_file))
+        response = ai_client.models.generate_content(model="gemini-2.5-flash", contents=[img, prompt])
+        bot.reply_to(message, response.text, parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, "Maaf, gagal menganalisa gambar.")
+
+# ==========================================
+# Chat AI dengan Memori
 # ==========================================
 @bot.message_handler(content_types=['text'])
 def handle_ai_chat(message):
     user_id = message.chat.id
     if not ai_client:
-        bot.reply_to(message, "Sistem AI belum aktif.")
         return
-        
     bot.send_chat_action(user_id, 'typing')
-    
     try:
-        # Jika user belum ada di memori, buatkan ruang obrolan baru
         if user_id not in user_chats:
             user_chats[user_id] = ai_client.chats.create(model="gemini-2.5-flash")
-            
-        # Kirim pesan ke ruang obrolan tersebut agar konteks terjaga
         response = user_chats[user_id].send_message(message.text)
         bot.reply_to(message, response.text, parse_mode="Markdown")
     except Exception as e:
-        bot.reply_to(message, "Maaf, AI sedang kesulitan merespons.")
-        logging.error(f"Error AI Chat: {e}")
+        bot.reply_to(message, "Server Google sedang sibuk, mohon tunggu sebentar.")
 
 # ==========================================
 # Eksekusi Utama
 # ==========================================
 if __name__ == "__main__":
-    logging.info("Bot Multifungsi V3 (Memory & Vision) berjalan...")
+    logging.info("Bot Super V4 berjalan...")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
         
