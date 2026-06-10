@@ -81,14 +81,16 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori dihapus!")
 
 # ==========================================
-# CHAT HANDLER (Dengan Internet Search)
+# CHAT HANDLER (Dengan Internet Search & Anti-429)
 # ==========================================
 @bot.message_handler(content_types=['text'])
 def handle_chat(message):
     if not ai_client: return
     bot.send_chat_action(message.chat.id, 'typing')
     query = message.text
+    
     try:
+        # Cek apakah chat session sudah ada
         if message.chat.id not in user_chats:
             user_chats[message.chat.id] = ai_client.chats.create(
                 model="gemini-2.5-flash",
@@ -103,15 +105,18 @@ def handle_chat(message):
         else:
             final_prompt = query
             
-        bot.reply_to(message, user_chats[message.chat.id].send_message(final_prompt).text, parse_mode="Markdown")
-        except Exception as e:
-        # Menangkap error 429 secara spesifik
+        # Mengirim ke AI
+        response = user_chats[message.chat.id].send_message(final_prompt)
+        bot.reply_to(message, response.text, parse_mode="Markdown")
+
+    except Exception as e:
+        # Penanganan error 429 yang lebih manusiawi
         if "429" in str(e):
             bot.reply_to(message, "Wah, kuota AI-ku sedang terpakai banyak nih! Tunggu 1 menit lagi ya, biar aku bisa 'nafas' dulu. 😅")
         else:
             bot.reply_to(message, "Server sedang sibuk. Coba lagi nanti ya.")
         logging.error(f"Error Chat: {e}")
-    
+        
 # ==========================================
 # Telinga AI (Voice Note)
 # ==========================================
