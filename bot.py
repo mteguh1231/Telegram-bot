@@ -26,7 +26,7 @@ user_chats = {}
 
 # --- Helper Spotify (RESMI & AMAN) ---
 def search_spotify_track(query):
-    # Endpoint Resmi Spotify
+    # URL Resmi (Gunakan ini agar tidak error 403)
     url_token = "https://accounts.spotify.com/api/token"
     url_search = "https://api.spotify.com/v1/search"
     
@@ -36,8 +36,10 @@ def search_spotify_track(query):
                               data={"grant_type": "client_credentials"}, 
                               auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET), 
                               timeout=10)
+        
+        # Jika kodenya 401 atau 403, berarti CLIENT_ID/SECRET kamu di Railway salah
         if res_t.status_code != 200:
-            return f"Error API Spotify: {res_t.status_code}"
+            return f"Error API Spotify: {res_t.status_code} (Cek ID & Secret di Railway)"
             
         token = res_t.json().get("access_token")
         
@@ -50,12 +52,15 @@ def search_spotify_track(query):
             return f"Error Pencarian: {res_s.status_code}"
             
         items = res_s.json().get("tracks", {}).get("items", [])
-        if not items: return "Lagu tidak ditemukan."
+        if not items: 
+            return "Lagu tidak ditemukan."
         
         track = items[0]
         return f"🎵 {track['name']} - {track['artists'][0]['name']}\n🔗 {track['external_urls']['spotify']}"
+        
     except Exception as e:
         return f"Error sistem: {str(e)}"
+        
 
 # --- Handlers ---
 @bot.message_handler(commands=['start'])
