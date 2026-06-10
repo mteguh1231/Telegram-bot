@@ -3,7 +3,7 @@ import logging
 import telebot
 import requests
 import xml.etree.ElementTree as ET
-import google.generativeai as genai
+from google import genai # <--- Menggunakan library Google terbaru
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,17 +18,15 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Setup Google Gemini AI
+# Setup Google Gemini AI (VERSI TERBARU)
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    # Menggunakan model Gemini terbaru
-    ai_model = genai.GenerativeModel('gemini-2.5-flash')
+    ai_client = genai.Client(api_key=GEMINI_API_KEY)
 else:
-    ai_model = None
+    ai_client = None
     logging.warning("GEMINI_API_KEY tidak ditemukan! Fitur AI tidak akan berfungsi.")
 
 # ==========================================
-# 1. Command: /start & /help
+# Command: /start & /help
 # ==========================================
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -43,15 +41,12 @@ def send_welcome(message):
     bot.reply_to(message, teks, parse_mode="Markdown")
 
 # ==========================================
-# 2. Command: /cuaca (Menggunakan wttr.in tanpa API Key)
+# Command: /cuaca
 # ==========================================
 @bot.message_handler(commands=['cuaca'])
 def cek_cuaca(message):
     try:
-        # Mengambil nama kota dari pesan, misalnya: /cuaca jakarta
         kota = message.text.split(" ", 1)[1]
-        
-        # Mengambil data dari layanan wttr.in
         url = f"https://wttr.in/{kota}?format=%l:+%c+%t\nKelembapan:+%h\nAngin:+%w"
         response = requests.get(url)
         
@@ -61,25 +56,19 @@ def cek_cuaca(message):
             bot.reply_to(message, "Maaf, cuaca untuk kota tersebut tidak ditemukan.")
     except IndexError:
         bot.reply_to(message, "Gunakan format yang benar:\nContoh: `/cuaca bandung`", parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, "Terjadi kesalahan saat mengambil data cuaca.")
-        logging.error(f"Error cuaca: {e}")
 
 # ==========================================
-# 3. Command: /berita (Mengambil RSS CNN)
+# Command: /berita
 # ==========================================
 @bot.message_handler(commands=['berita'])
 def cek_berita(message):
     bot.reply_to(message, "⏳ Sedang mengambil berita terbaru dari CNN...")
     try:
-        # URL RSS Feed CNN Internasional
         url = "http://rss.cnn.com/rss/edition.rss"
         response = requests.get(url)
         root = ET.fromstring(response.content)
         
         berita_teks = "📰 *Top Berita CNN Hari Ini:*\n\n"
-        
-        # Mengambil 5 berita pertama
         items = root.findall('./channel/item')[:5]
         for idx, item in enumerate(items, 1):
             title = item.find('title').text
@@ -89,10 +78,9 @@ def cek_berita(message):
         bot.send_message(message.chat.id, berita_teks, parse_mode="Markdown", disable_web_page_preview=True)
     except Exception as e:
         bot.send_message(message.chat.id, "Maaf, gagal mengambil berita saat ini.")
-        logging.error(f"Error berita: {e}")
 
 # ==========================================
-# 4. Command: /quote (Kutipan Acak)
+# Command: /quote
 # ==========================================
 @bot.message_handler(commands=['quote'])
 def cek_quote(message):
@@ -101,39 +89,36 @@ def cek_quote(message):
         response = requests.get(url).json()
         quote = response['quote']
         author = response['author']
-        
-        teks = f"💡 *Quote of the Day:*\n\n_\"{quote}\"_\n— *{author}*"
-        bot.reply_to(message, teks, parse_mode="Markdown")
-    except Exception as e:
+        bot.reply_to(message, f"💡 *Quote of the Day:*\n\n_\"{quote}\"_\n— *{author}*", parse_mode="Markdown")
+    except Exception:
         bot.reply_to(message, "Sedang kehabisan kata-kata. Coba lagi nanti!")
 
 # ==========================================
-# 5. Chat AI (Menangani Semua Pesan Teks Biasa)
+# Chat AI (Format Terbaru Gemini 3.5 Flash)
 # ==========================================
 @bot.message_handler(content_types=['text'])
 def handle_ai_chat(message):
-    if not ai_model:
+    if not ai_client:
         bot.reply_to(message, "Maaf, sistem AI sedang tidak aktif karena API Key belum dipasang.")
         return
         
-    # Memberikan efek "typing..." di Telegram
     bot.send_chat_action(message.chat.id, 'typing')
     
     try:
-        # Mengirim teks pengguna ke Google Gemini
-        response = ai_model.generate_content(message.text)
+        # Menggunakan format pemanggilan API generasi baru
+        response = ai_client.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=message.text
+        )
         bot.reply_to(message, response.text, parse_mode="Markdown")
     except Exception as e:
-        bot.reply_to(message, "Maaf, saya sedang pusing memproses pertanyaanmu (terjadi error pada sistem AI).")
+        bot.reply_to(message, "Maaf, saya sedang pusing memproses pertanyaanmu.")
         logging.error(f"Error AI: {e}")
 
 # ==========================================
 # Menjalankan Bot
 # ==========================================
 if __name__ == "__main__":
-    logging.info("Bot Multifungsi sedang berjalan...")
-    try:
-        bot.infinity_polling(timeout=10, long_polling_timeout=5)
-    except Exception as e:
-        logging.error(f"Bot berhenti: {e}")
-        
+    logging.info("Bot Multifungsi V2 sedang berjalan...")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    
