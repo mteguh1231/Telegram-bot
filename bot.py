@@ -50,26 +50,34 @@ def show_main_menu(chat_id, text="Pilih menu di bawah:"):
 def get_spotify_token():
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
+    
+    # URL Resmi Autentikasi Spotify
     url = "https://accounts.spotify.com/api/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {"grant_type": "client_credentials"}
+    
     try:
-        res = requests.post(url, headers=headers, data=data, auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET))
+        res = requests.post(url, headers=headers, data=data, auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET), timeout=10)
         if res.status_code == 200:
             return res.json().get("access_token")
-    except:
-        return None
+        else:
+            print(f"Error Token: {res.status_code} - {res.text}")
+    except Exception as e:
+        print(f"Gagal konek ke Spotify: {e}")
     return None
 
 def search_spotify_track(query):
     token = get_spotify_token()
     if not token:
         return "config_error"
+        
+    # URL Resmi Pencarian Spotify
     url = "https://api.spotify.com/v1/search"
     headers = {"Authorization": f"Bearer {token}"}
     params = {"q": query, "type": "track", "limit": 1}
+    
     try:
-        res = requests.get(url, headers=headers, params=params)
+        res = requests.get(url, headers=headers, params=params, timeout=10)
         if res.status_code == 200:
             items = res.json().get("tracks", {}).get("items", [])
             if items:
@@ -82,9 +90,13 @@ def search_spotify_track(query):
                     "preview": track.get("preview_url")
                 }
             return "not_found"
-    except:
+        else:
+            print(f"Error Search: {res.status_code} - {res.text}")
+            return "api_error"
+    except Exception as e:
+        print(f"Gagal cari lagu: {e}")
         return "api_error"
-    return "not_found"
+        
 
 # --- Command /start ---
 @bot.message_handler(commands=['start'])
