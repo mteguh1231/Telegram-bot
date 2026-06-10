@@ -6,3 +6,4 @@ yt-dlp
 duckduckgo-search
 supabase
 gTTS
+flask
