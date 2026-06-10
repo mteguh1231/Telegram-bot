@@ -1,8 +1,7 @@
-pyTelegramBotAPI
-requests
-Pillow
+pyTelegramBotAPI==4.14.1
+requests==2.31.0
+Pillow==10.2.0
 google-genai
-yt-dlp
+yt-dlp==2023.12.30
 duckduckgo-search
-supabase
-flask
+supabase==2.3.4
