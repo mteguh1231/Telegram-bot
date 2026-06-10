@@ -217,5 +217,10 @@ def handle_chat(message):
 
 if __name__ == "__main__":
     logging.info("Bot Super V6 (IMAGE GEN) berjalan...")
+    
+    # Membersihkan sisa koneksi agar tidak tabrakan (Bypass Error 409)
+    bot.remove_webhook()
+    
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
+
         
