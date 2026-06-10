@@ -5,3 +5,7 @@ google-genai
 yt-dlp
 supabase
 pdf2docx
+PyMuPDF
+pdfplumber
+pandas
+openpyxl
