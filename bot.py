@@ -76,7 +76,7 @@ def handle_basic_commands(message):
         bot.reply_to(message, "🧹 Memori obrolan dihapus!")
 
 # ==========================================
-# FITUR: Telinga AI (Mendengar Voice Note) - FIX CRASH
+# FITUR: Telinga AI (Mendengar Voice Note) - FIX FINAL
 # ==========================================
 @bot.message_handler(content_types=['voice'])
 def handle_voice_chat(message):
@@ -88,14 +88,16 @@ def handle_voice_chat(message):
         file_info = bot.get_file(message.voice.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # 2. Simpan sementara di server dengan ekstensi yang jelas
-        nama_file_audio = f"audio_{message.chat.id}.ogg"
+        # 2. Simpan sementara di server
+        nama_file_audio = f"vn_{message.chat.id}.ogg"
         with open(nama_file_audio, 'wb') as new_file:
             new_file.write(downloaded_file)
             
-        # 3. Upload file ke otak Google Gemini 
-        # (Tanpa parameter aneh-aneh agar tidak error)
-        audio_upload = ai_client.files.upload(file=nama_file_audio)
+        # 3. Upload file ke otak Google Gemini (Menggunakan Config agar tidak crash)
+        audio_upload = ai_client.files.upload(
+            file=nama_file_audio,
+            config=types.UploadFileConfig(mime_type="audio/ogg")
+        )
         
         # 4. Kirim audio tersebut ke dalam ruang memori obrolan kita
         if message.chat.id not in user_chats:
@@ -111,6 +113,7 @@ def handle_voice_chat(message):
     except Exception as e:
         bot.reply_to(message, "Maaf, telinga AI sedang berdengung.")
         logging.error(f"Error Voice Chat: {e}")
+        
         
         
 
