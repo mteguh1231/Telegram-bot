@@ -1,2 +1,3 @@
-python-telegram-bot==20.1
-google-generativeai
+pyTelegramBotAPI==4.15.4
+requests==2.31.0
+google-generativeai==0.4.1
