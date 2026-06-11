@@ -1,4 +1,4 @@
-pyTelegramBotAPI==4.14.0
+pyTelegramBotAPI
 google-genai
 pillow
 rembg[cpu]
