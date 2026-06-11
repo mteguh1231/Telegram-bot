@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 import zipfile
-import threading # Library tambahan untuk animasi
+import threading
 
 import telebot
 from telebot import types
@@ -50,7 +50,6 @@ class LoadingAnim:
         self.thread.start()
 
     def _animate(self):
-        # Frame animasi yang akan berputar
         frames = ["⏳", "⌛", "🔄", "🔃"]
         idx = 0
         while self.running:
@@ -59,16 +58,14 @@ class LoadingAnim:
                 bot.edit_message_text(f"{frame} *{self.text}...*", self.chat_id, self.message_id, parse_mode="Markdown")
                 idx += 1
             except: 
-                pass # Abaikan error jika pesan sudah dihapus/berubah
+                pass 
             
-            # Waktu tunggu 1.5 detik per frame agar tidak kena limit Telegram (Flood Wait)
             for _ in range(15): 
                 if not self.running: break
                 time.sleep(0.1)
 
     def stop(self):
         self.running = False
-
 
 # ==========================================================================
 # FUNGSI AI CHAT & DOWNLOADER
@@ -103,6 +100,20 @@ def get_ai_response(chat_id, prompt):
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
 def download_media_via_api(url):
+    # --- SISTEM PEMBERSIH LINK OTOMATIS ---
+    url = url.strip()
+    
+    # 1. Paksa awalan menjadi huruf kecil (Https -> https)
+    if url.startswith("Https://"): url = url.replace("Https://", "https://")
+    elif url.startswith("Http://"): url = url.replace("Http://", "http://")
+    
+    # 2. Potong ekor pelacak (tracking) yang mengganggu API
+    if "?si=" in url: url = url.split("?si=")[0]
+    if "&si=" in url: url = url.split("&si=")[0]
+    if "instagram.com" in url and "?" in url: url = url.split("?")[0]
+    if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
+    # --------------------------------------
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json"
@@ -154,7 +165,6 @@ def download_media_via_api(url):
 # ==========================================================================
 def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di bawah ini:"):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    # AI Vision sudah dihapus dari menu
     markup.add("💬 Chat AI", "📥 Downloader", "📁 Convert File", "🛠️ Utility Tools", "🧹 Hapus Memori Chat")
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
@@ -266,7 +276,7 @@ def handle_files(m):
                 headers={'X-Api-Key': API_KEY},
             )
             
-            anim.stop() # Hentikan animasi
+            anim.stop()
             
             if response.status_code == requests.codes.ok:
                 out_io = io.BytesIO(response.content)
@@ -329,13 +339,11 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
-        # Menjalankan animasi loading berjalan
         anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Membongkar link dari server")
         try:
             video_link = download_media_via_api(m.text)
             
             if video_link:
-                # Mengubah status animasi saat mengirim file
                 anim.text = "Mengirim video ke Telegram"
                 
                 temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
@@ -348,11 +356,11 @@ def handle_text(m):
                     bot.send_video(m.chat.id, f, caption="✨ *Selesai!*", parse_mode="Markdown", timeout=120)
                 
                 os.remove(temp_filename)
-                anim.stop() # Stop Animasi
+                anim.stop() 
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Sistem API tertahan oleh hak cipta / API sedang maintenance.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Sistem API tertahan oleh hak cipta / link tidak valid.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             anim.stop()
@@ -377,4 +385,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-                            
+    
