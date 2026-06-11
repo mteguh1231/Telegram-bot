@@ -389,4 +389,3 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-        
