@@ -68,7 +68,7 @@ class LoadingAnim:
         self.running = False
 
 # ==========================================================================
-# FUNGSI AI CHAT & DOWNLOADER MULTI-API 
+# FUNGSI AI CHAT & DOWNLOADER MULTI-API TAHAN BANTING
 # ==========================================================================
 def get_ai_response(chat_id, prompt):
     global current_key_index, chat_history
@@ -109,81 +109,62 @@ def download_media_via_api(url):
     if "&si=" in url: url = url.split("&si=")[0]
     if "instagram.com" in url and "?" in url: url = url.split("?")[0]
     if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
-    
-    if "youtube.com" in url or "youtu.be" in url:
-        vid_id = None
-        if "youtu.be/" in url: vid_id = url.split("youtu.be/")[1].split("?")[0]
-        elif "youtube.com/shorts/" in url: vid_id = url.split("youtube.com/shorts/")[1].split("?")[0]
-        elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
-        if vid_id: url = f"https://youtu.be/{vid_id}"
 
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0"}
 
-    # 1. Khusus TikTok
+    # 1. Khusus TikTok (Menggunakan TikWM)
     if "tiktok.com" in url or "vt.tiktok" in url:
         try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers=headers, timeout=10).json().get('data', {}).get('play')
         except: pass
 
-    # --- FUNGSI PELACAK LINK MP4 CERDAS ---
-    def extract_vid_url(data):
+    # --- FUNGSI EKSTRAKSI LINK INTERNASIONAL ---
+    def extract_link(data):
         if isinstance(data, dict):
-            for key in ['url', 'dl', 'link', 'video', 'media', 'play', 'mp4']:
-                if key in data and isinstance(data[key], str) and data[key].startswith('http') and not data[key].endswith('.jpg'):
+            for key in ['url', 'dl', 'link', 'video', 'download', 'play', 'data']:
+                if key in data and isinstance(data[key], str) and data[key].startswith('http'):
                     return data[key]
             for k, v in data.items():
-                res = extract_vid_url(v)
+                res = extract_link(v)
                 if res: return res
         elif isinstance(data, list) and len(data) > 0:
-            return extract_vid_url(data[0])
+            return extract_link(data[0])
         return None
 
-    # 2. Khusus YouTube (Mode Serbu 4 API Tangguh)
-    if "youtu.be" in url or "youtube.com" in url:
-        yt_apis = [
-            f"https://widipe.com/download/ytdl?url={url}",
-            f"https://api.btch.info/download/ytdl?url={url}",
-            f"https://api.siputzx.my.id/api/d/ytmp4?url={url}",
-            f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}"
+    # 2. Jalur Alternatif Kuat untuk YouTube & Instagram (Menggunakan API Publik Global Berbeda)
+    if "youtube.com" in url or "youtu.be" in url or "instagram.com" in url:
+        # Kita tembak ke API khusus bypass data center yang menggunakan server proxy terdistribusi
+        endpoints = [
+            f"https://api.alyapi.biz.id/api/downloader/aio?url={url}",
+            f"https://api.sandipbaruwal.com/aio/download?url={url}",
+            f"https://skizoasia.xyz/api/aio?url={url}",
+            f"https://api.botcahx.eu.org/api/download/aio?url={url}"
         ]
-        for api_url in yt_apis:
+        
+        for endpoint in endpoints:
             try:
-                res = requests.get(api_url, headers=headers, timeout=10).json()
-                vid_link = extract_vid_url(res)
-                if vid_link: return vid_link
-            except: continue
+                res = requests.get(endpoint, headers=headers, timeout=12).json()
+                media_url = extract_link(res)
+                if media_url: return media_url
+            except:
+                continue
 
-    # 3. Khusus Instagram (Mode Serbu 4 API Tangguh)
-    if "instagram.com" in url:
-        ig_apis = [
-            f"https://widipe.com/download/igdl?url={url}",
-            f"https://api.btch.info/download/igdl?url={url}",
-            f"https://api.siputzx.my.id/api/d/igdl?url={url}",
-            f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}"
-        ]
-        for api_url in ig_apis:
-            try:
-                res = requests.get(api_url, headers=headers, timeout=10).json()
-                vid_link = extract_vid_url(res)
-                if vid_link: return vid_link
-            except: continue
-
-    # 4. Sapu Jagat Terakhir (Jaringan Cobalt Server Komunitas)
-    cobalt_instances = [
-        "https://cobalt.q-n.space/api/json",
+    # 3. Benteng Terakhir (Cobalt Cluster)
+    cobalt_nodes = [
         "https://co.wuk.sh/api/json",
-        "https://api.cobalt.tools/"
+        "https://cobalt.q-n.space/api/json",
+        "https://api.cobalt.tools/api/json"
     ]
-    for cob in cobalt_instances:
+    for node in cobalt_nodes:
         try:
-            cobalt_headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": headers["User-Agent"]}
-            res = requests.post(cob, json={"url": url}, headers=cobalt_headers, timeout=15)
+            res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": headers["User-Agent"]}, timeout=12)
             if res.status_code in [200, 201]:
-                data = res.json()
-                if data.get("status") in ["stream", "redirect"]: return data.get("url")
-                elif data.get("status") == "picker": return data["picker"][0]["url"]
-                elif data.get("url"): return data.get("url")
-        except: continue
-    
+                d = res.json()
+                if d.get("status") in ["stream", "redirect"]: return d.get("url")
+                elif d.get("status") == "picker": return d["picker"][0]["url"]
+                elif d.get("url"): return d.get("url")
+        except:
+            continue
+            
     return None
 
 # ==========================================================================
@@ -301,7 +282,6 @@ def handle_files(m):
                 data={'image_url': file_url, 'size': 'auto'},
                 headers={'X-Api-Key': API_KEY},
             )
-            
             anim.stop()
             
             if response.status_code == requests.codes.ok:
@@ -411,4 +391,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-        
+    
