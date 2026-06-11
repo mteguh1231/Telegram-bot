@@ -125,20 +125,28 @@ def download_media_via_api(url):
         elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
         if vid_id: url = f"https://youtu.be/{vid_id}"
 
-    # 1. TIKTOK (Menggunakan TikWM)
+    # 1. TIKTOK 
     if "tiktok.com" in url or "vt.tiktok" in url:
         try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json().get('data', {}).get('play')
         except: pass
 
-    # 2. JALUR VIP APIFY (Untuk Instagram & YouTube)
-    APIFY_TOKEN = os.getenv('APIFY_TOKEN')
-    if APIFY_TOKEN and ("instagram.com" in url or "youtu.be" in url or "youtube.com" in url):
+    # 2. JALUR VIP APIFY (MODE PELACAK ERROR)
+    if "instagram.com" in url or "youtu.be" in url or "youtube.com" in url:
+        APIFY_TOKEN = os.getenv('APIFY_TOKEN')
+        
+        # Cek apakah token benar-benar sudah dipasang di Server
+        if not APIFY_TOKEN:
+            raise Exception("LUPA PASANG TOKEN: Variabel APIFY_TOKEN belum ada di setting Server kamu!")
+
         try:
             ACTOR_ID = "hVlkT1FrZB15YsUDo" 
             apify_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
-            payload = {"url": url, "urls": [url], "directUrls": [url], "downloadVideo": True}
+            
+            # Kita buat format sesederhana mungkin agar Apify tidak bingung
+            payload = {"url": url}
             
             res = requests.post(apify_url, json=payload, timeout=60) 
+            
             if res.status_code in [200, 201]:
                 data = res.json()
                 if isinstance(data, list) and len(data) > 0:
@@ -146,26 +154,19 @@ def download_media_via_api(url):
                     for key in ['videoUrl', 'video_url', 'url', 'displayUrl', 'media_url']:
                         if key in item and isinstance(item[key], str) and ('mp4' in item[key] or 'video' in item[key]):
                             return item[key]
+                
+                # Jika Apify berhasil menyedot web, tapi tidak menemukan link video
+                raise Exception(f"APIFY BINGUNG: Data sukses ditarik tapi aneh bentuknya. Isi: {str(data)[:100]}")
+            else:
+                # Jika token salah atau sistem ditolak oleh server Apify
+                raise Exception(f"APIFY MARAH (Kode {res.status_code}): {res.text[:150]}")
+                
         except Exception as e:
-            logging.error(f"[Apify Error]: {e}")
+            # Lempar error aslinya agar langsung dibaca oleh bot Telegram!
+            raise Exception(str(e))
 
-    # 3. BENTENG CADANGAN TERAKHIR (Cobalt Server Komunitas)
-    cobalt_nodes = [
-        "https://co.wuk.sh/api/json",
-        "https://cobalt.q-n.space/api/json",
-        "https://api.cobalt.tools/api/json"
-    ]
-    for node in cobalt_nodes:
-        try:
-            res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=12)
-            if res.status_code in [200, 201]:
-                d = res.json()
-                if d.get("status") in ["stream", "redirect"]: return d.get("url")
-                elif d.get("status") == "picker": return d["picker"][0]["url"]
-                elif d.get("url"): return d.get("url")
-        except: continue
-            
     return None
+        
 
 # ==========================================================================
 # MENU & HANDLERS
