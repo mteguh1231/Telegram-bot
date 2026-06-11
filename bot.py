@@ -217,8 +217,7 @@ def menu(m):
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             types.InlineKeyboardButton("📄 PDF ke Word", callback_data="set_pdf2word"),
-            types.InlineKeyboardButton("📝 Word ke PDF", callback_data="set_word2pdf"),
-            types.InlineKeyboardButton("🖼️ Gambar ke JPG", callback_data="set_any2jpg"),
+            types.InlineKeyboardButton("📝 Word ke PDF", callback_data="set_any2jpg"),
             types.InlineKeyboardButton("📄➡️🖼️ PDF ke JPG", callback_data="set_pdf2jpg"),
             types.InlineKeyboardButton("🖼️➡️📄 JPG ke PDF", callback_data="set_jpg2pdf"),
             types.InlineKeyboardButton("📊 PDF ke Excel", callback_data="set_pdf2excel"),
@@ -341,9 +340,9 @@ def handle_text(m):
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Memproses video... Mohon tunggu.*", parse_mode="Markdown")
         try:
-            # KITA HAPUS BATASAN FORMAT! Biarkan yt-dlp memilih format bawaan terbaik
             ydl_opts = {
-                'outtmpl': f'media_{m.chat.id}_%(id)s.%(ext)s', # Ekstensi file dinamis mengikuti aslinya
+                'format': 'b',  # PAKSA ambil format tunggal (single file) terbaik yang tersedia.
+                'outtmpl': f'media_{m.chat.id}_%(id)s.%(ext)s',
                 'no_warnings': True,
                 'quiet': True,
                 'geo_bypass': True, 
@@ -396,4 +395,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-        
+    
