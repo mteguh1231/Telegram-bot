@@ -279,7 +279,7 @@ def handle_text(m):
         except Exception as e: bot.reply_to(m, f"❌ *Error:* {str(e)}")
         return
 
-    # === MESIN DOWNLOADER YT-DLP + COOKIES (TANPA LIMIT MAX_FILESIZE) ===
+    # === MESIN DOWNLOADER YT-DLP + COOKIES + FFMPEG ===
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         if yt_dlp is None:
             bot.reply_to(m, "❌ *System Error:* Library `yt-dlp` belum terinstal!", parse_mode="Markdown")
@@ -310,22 +310,21 @@ def handle_text(m):
                             for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
                     downloaded_file = temp_filename
 
-            # 2. YOUTUBE & INSTAGRAM (Memanfaatkan Cookies)
+            # 2. YOUTUBE & INSTAGRAM
             else:
-                anim.update_text("Mengekstrak video menggunakan KTP rahasia")
+                anim.update_text("Mengekstrak video (Dibantu FFmpeg)")
                 
-                # Format disederhanakan tanpa max_filesize agar tidak error "format not available"
+                # INI KUNCINYA: format disetting agar mencari gabungan DULU, kalau gagal baru ambil terpisah
                 ydl_opts = {
                     'outtmpl': temp_filename,
-                    'format': 'best[ext=mp4]/best', 
+                    'format': 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b',
+                    'merge_output_format': 'mp4',
                     'quiet': True,
                     'no_warnings': True,
                 }
                 
                 if os.path.exists('cookies.txt'):
                     ydl_opts['cookiefile'] = 'cookies.txt'
-                else:
-                    logging.warning("⚠️ File cookies.txt tidak ditemukan di server!")
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
@@ -333,18 +332,16 @@ def handle_text(m):
                 if os.path.exists(temp_filename):
                     downloaded_file = temp_filename
 
-            # --- KIRIM VIDEO KE TELEGRAM (DENGAN TIMBANGAN MANUAL) ---
+            # --- KIRIM VIDEO KE TELEGRAM ---
             if downloaded_file and os.path.exists(downloaded_file):
                 file_size_mb = os.path.getsize(downloaded_file) / (1024 * 1024)
                 
                 if file_size_mb > 49.5:
-                    # Laporan Elegan Jika Video Terlalu Besar
                     anim.stop()
-                    bot.edit_message_text(f"❌ *Gagal:* Ukuran video terlalu besar (*{file_size_mb:.1f} MB*).\n\nBatas maksimal pengiriman bot Telegram gratisan adalah **50 MB** (biasanya video panjang di atas 10 menit).", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                    bot.edit_message_text(f"❌ *Gagal:* Ukuran video terlalu besar (*{file_size_mb:.1f} MB*). Maksimal 50 MB.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
                     os.remove(downloaded_file)
                 else:
-                    # Lolos Timbangan, Langsung Kirim!
-                    anim.update_text(f"Mengirim video ke Telegram ({file_size_mb:.1f} MB)")
+                    anim.update_text(f"Mengirim video ({file_size_mb:.1f} MB)")
                     with open(downloaded_file, 'rb') as f:
                         bot.send_video(m.chat.id, f, caption="✨ *Selesai!*", parse_mode="Markdown", timeout=120)
                     os.remove(downloaded_file)
@@ -380,4 +377,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-        
+    
