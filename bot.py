@@ -332,22 +332,25 @@ def handle_text(m):
         return
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
-        loading_msg = bot.reply_to(m, "⏳ *Mengunduh...*", parse_mode="Markdown")
+        loading_msg = bot.reply_to(m, "⏳ *Memproses video... Mohon tunggu.*", parse_mode="Markdown")
         out_filename = f"media_{m.chat.id}.mp4"
         try:
-            # OPTIMASI ANTI-BOT UNTUK YT-DLP
+            # OPTIMASI ANTI-BOT & LIMIT TELEGRAM (50MB) UNTUK YT-DLP
             ydl_opts = {
-                'format': 'best[ext=mp4]/best',
+                # Mengutamakan format mp4 single-file (tanpa perlu ffmpeg) di bawah 50MB
+                'format': 'best[ext=mp4][filesize<=45M]/best[filesize<=45M]/best',
                 'outtmpl': out_filename,
                 'no_warnings': True,
                 'quiet': True,
+                'geo_bypass': True, 
+                'nocheckcertificate': True,
             }
             
-            # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile (Android/iOS)
-            if "youtube.com" in m.text or "youtu.be" in m.text:
+            # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile & Web
+            if "youtube.com" in m.text or "youtu.be" in m.text or "yt.be" in m.text:
                 ydl_opts['extractor_args'] = {
                     'youtube': {
-                        'player_client': ['android', 'ios']
+                        'player_client': ['android', 'ios', 'web']
                     }
                 }
                 
@@ -355,18 +358,34 @@ def handle_text(m):
             if os.path.exists('cookies.txt'):
                 ydl_opts['cookiefile'] = 'cookies.txt'
                 
+            # Proses Download
             with YoutubeDL(ydl_opts) as ydl: 
                 ydl.download([m.text])
                 
-            with open(out_filename, 'rb') as f: 
-                bot.send_video(m.chat.id, f, caption="✨ Selesai!")
-                
-            os.remove(out_filename)
-            bot.delete_message(m.chat.id, loading_msg.message_id)
+            # Verifikasi apakah file berhasil terunduh sebelum dikirim
+            if os.path.exists(out_filename):
+                bot.edit_message_text("📤 *Video berhasil diunduh! Sedang mengirim ke Telegram...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                with open(out_filename, 'rb') as f: 
+                    # Tambahan timeout agar tidak terputus saat bot mengunggah file lumayan besar
+                    bot.send_video(m.chat.id, f, caption="✨ *Selesai!*", parse_mode="Markdown", timeout=120) 
+                os.remove(out_filename)
+                bot.delete_message(m.chat.id, loading_msg.message_id)
+            else:
+                bot.edit_message_text("❌ *Gagal:* File video tidak ditemukan setelah diproses.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             logging.error(f"Gagal download: {str(e)}")
-            bot.edit_message_text(f"❌ *Gagal mengunduh!*\nYouTube mendeteksi bot/memblokir IP server cloud.\n\nDetail: `{str(e)[:120]}`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            error_msg = str(e).lower()
+            
+            # Mengubah pesan error agar lebih mudah dipahami
+            if "filesize" in error_msg or "too large" in error_msg:
+                teks_gagal = "❌ *Gagal mengunduh!*\nUkuran video terlalu besar (melebihi batas 50MB dari Telegram)."
+            elif "sign in" in error_msg or "bot" in error_msg:
+                teks_gagal = "❌ *Gagal mengunduh!*\nYouTube memblokir akses server bot. Coba gunakan link lain."
+            else:
+                teks_gagal = f"❌ *Gagal mengunduh!*\nLink mungkin diproteksi (Private) atau server diblokir.\n\n`Detail: {str(e)[:100]}...`"
+                
+            bot.edit_message_text(teks_gagal, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             if os.path.exists(out_filename):
                 os.remove(out_filename)
         return
@@ -381,4 +400,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-        
+                
