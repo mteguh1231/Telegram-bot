@@ -213,7 +213,7 @@ def handle_files(m):
             
             prompt = m.caption if m.caption else "Ekstrak teks (OCR) jika ada, lalu jelaskan isi gambar ini secara detail."
             response = ai_client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-1.5-flash-latest",
                 contents=[prompt, img_pil]
             )
             bot.edit_message_text(f"🤖 *Hasil AI Vision:*\n\n{response.text}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
@@ -419,7 +419,7 @@ def handle_text(m):
     # CHAT AI (Lama)
     elif state == "chat":
         if m.chat.id not in user_chats: 
-            user_chats[m.chat.id] = ai_client.chats.create(model="gemini-1.5-flash")
+            user_chats[m.chat.id] = ai_client.chats.create(model="gemini-1.5-flash-latest")
         loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
         try:
             reply_text = user_chats[m.chat.id].send_message(m.text).text
