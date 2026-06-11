@@ -102,7 +102,7 @@ def get_ai_response(chat_id, prompt):
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
 # ==========================================================================
-# DOWNLOADER PASUKAN COBALT (TANPA API KEY)
+# DOWNLOADER SUPER COBALT v10 & MULTI-API
 # ==========================================================================
 def download_media_via_api(url):
     url = url.strip()
@@ -121,38 +121,80 @@ def download_media_via_api(url):
         elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
         if vid_id: url = f"https://youtu.be/{vid_id}"
 
+    # 1. TIKTOK (TikWM)
     if "tiktok.com" in url or "vt.tiktok" in url:
         try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json().get('data', {}).get('play')
         except: pass
 
+    def extract_link(data):
+        if isinstance(data, dict):
+            for key in ['url', 'dl', 'link', 'video', 'download', 'play', 'media']:
+                val = data.get(key)
+                if isinstance(val, str) and val.startswith('http') and not val.endswith('.jpg'):
+                    return val
+                if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict):
+                    if 'url' in val[0] and isinstance(val[0]['url'], str) and val[0]['url'].startswith('http'):
+                        return val[0]['url']
+            for k, v in data.items():
+                res = extract_link(v)
+                if res: return res
+        elif isinstance(data, list) and len(data) > 0:
+            return extract_link(data[0])
+        return None
+
+    # 2. JALUR API LOKAL (Penahan Pertama)
+    if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url:
+        public_apis = [
+            f"https://api.siputzx.my.id/api/d/igdl?url={url}" if "instagram" in url else f"https://api.siputzx.my.id/api/d/ytmp4?url={url}",
+            f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}" if "instagram" in url else f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}",
+            f"https://api.vreden.my.id/api/igdownload?url={url}" if "instagram" in url else f"https://api.vreden.my.id/api/ytmp4?url={url}",
+            f"https://widipe.com/download/igdl?url={url}" if "instagram" in url else f"https://widipe.com/download/ytdl?url={url}"
+        ]
+        for api_url in public_apis:
+            try:
+                r = requests.get(api_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json()
+                media_link = extract_link(r)
+                if media_link: return media_link
+            except:
+                continue
+
+    # 3. PASUKAN COBALT v10 (UPDATE TERBARU TANPA /api/json)
     if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url:
         cobalt_servers = [
-            "https://co.wuk.sh/api/json",
-            "https://cobalt.catterall.sh/api/json",
-            "https://cobalt.q-n.space/api/json",
-            "https://cobalt.tcr.gg/api/json",
-            "https://api.cobalt.tools/api/json",
-            "https://dl.khub.win/api/json",
-            "https://cobalt.zackmyers.io/api/json",
-            "https://cobalt.macz.uz/api/json"
+            "https://api.cobalt.tools",
+            "https://co.wuk.sh",
+            "https://cobalt.catterall.sh",
+            "https://cobalt.q-n.space",
+            "https://cobalt.tcr.gg",
+            "https://dl.khub.win",
+            "https://cobalt.zackmyers.io"
         ]
         
         cobalt_headers = {
             "Accept": "application/json", 
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
 
         for server in cobalt_servers:
             try:
-                res = requests.post(server, json={"url": url}, headers=cobalt_headers, timeout=12)
+                # Tembakan v10
+                res = requests.post(f"{server}/", json={"url": url}, headers=cobalt_headers, timeout=12)
                 if res.status_code in [200, 201]:
                     data = res.json()
-                    if data.get("status") in ["stream", "redirect"]: return data.get("url")
+                    if data.get("status") in ["stream", "redirect", "success"]: return data.get("url")
                     elif data.get("status") == "picker": return data["picker"][0]["url"]
                     elif data.get("url"): return data.get("url")
+                
+                # Tembakan v9 Cadangan
+                res2 = requests.post(f"{server}/api/json", json={"url": url}, headers=cobalt_headers, timeout=12)
+                if res2.status_code in [200, 201]:
+                    data2 = res2.json()
+                    if data2.get("status") in ["stream", "redirect"]: return data2.get("url")
+                    elif data2.get("status") == "picker": return data2["picker"][0]["url"]
+                    elif data2.get("url"): return data2.get("url")
             except:
-                continue
+                continue 
 
     return None
 
@@ -367,7 +409,6 @@ def handle_text(m):
                     except: pass
         return
 
-    # === BAGIAN AI YANG DIPERBAIKI (ANTI-ERROR MARKDOWN) ===
     elif state == "chat":
         loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
         anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Mengetik balasan")
@@ -376,10 +417,8 @@ def handle_text(m):
             anim.stop()
             
             try:
-                # PERTAMA: Coba kirim dengan gaya tebal/miring (Markdown)
                 bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             except Exception as e:
-                # KEDUA: Kalau ditolak Telegram karena simbol acak, paksa kirim teks biasa!
                 logging.error(f"Telegram menolak Markdown: {e}")
                 bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id)
                 
