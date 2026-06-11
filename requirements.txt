@@ -2,7 +2,8 @@ pyTelegramBotAPI
 Pillow
 google-genai
 yt-dlp
-rembg
+rembg[cpu]
 qrcode
 opencv-python
 numpy
+onnxruntime
