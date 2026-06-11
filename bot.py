@@ -34,16 +34,18 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 # ==========================================================================
-# CONFIGURATION: DAFTAR MODEL AI GROQ (Ubah di sini jika Groq update lagi)
+# CONFIGURATION: DAFTAR MODEL AI GROQ
 # ==========================================================================
 TEXT_MODEL = "llama-3.3-70b-versatile"
 
-# Sistem akan mencoba model-model ini berurutan sampai menemukan yang aktif di Groq
+# List Cadangan JAGA-JAGA jika sistem Auto-Detect dari server Groq gagal
 VISION_MODELS_FALLBACK = [
+    "llama-3.2-90b-vision-preview",
+    "llama-3.2-11b-vision-preview",
     "llama-3.2-11b-vision-instruct",
+    "llama-3.2-90b-vision-instruct",
     "llama-3.2-11b-vision",
-    "llama-3.2-90b-vision",
-    "llama-3.2-90b-vision-instruct"
+    "llama-3.2-90b-vision"
 ]
 # ==========================================================================
 
@@ -74,17 +76,31 @@ def get_ai_response(chat_id, prompt, img_pil=None):
             temp_client = Groq(api_key=active_key)
             
             if img_pil:
-                # Mode Vision (Foto) dengan Sistem Auto-Fallback Anti-Error
+                # Mode Vision (Foto) dengan Sistem Auto-Detect Pintar
                 buffered = io.BytesIO()
                 img_pil.save(buffered, format="JPEG")
                 img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 
+                models_to_try = []
+                
+                try:
+                    available_models = temp_client.models.list().data
+                    for m in available_models:
+                        if 'vision' in m.id.lower():
+                            models_to_try.append(m.id)
+                except Exception as e:
+                    logging.warning(f"Gagal mengambil daftar model otomatis dari Groq: {e}")
+                
+                for backup_model in VISION_MODELS_FALLBACK:
+                    if backup_model not in models_to_try:
+                        models_to_try.append(backup_model)
+                        
                 response = None
                 last_vision_error = None
                 
-                # Melakukan perulangan untuk mencari nama model vision yang sedang aktif
-                for model_name in VISION_MODELS_FALLBACK:
+                for model_name in models_to_try:
                     try:
+                        logging.info(f"Mencoba model vision: {model_name}")
                         response = temp_client.chat.completions.create(
                             model=model_name,
                             messages=[{
@@ -95,21 +111,20 @@ def get_ai_response(chat_id, prompt, img_pil=None):
                                 ]
                             }]
                         )
-                        # Jika berhasil dapat respon, langsung return hasilnya
                         return response.choices[0].message.content
                     except Exception as ve:
                         last_vision_error = ve
                         err_msg = str(ve).lower()
-                        # Jika error disebabkan karena model tidak ditemukan/decommissioned, lanjut uji nama berikutnya
-                        if "model_not_found" in err_msg or "decommissioned" in err_msg or "404" in err_msg or "400" in err_msg:
-                            logging.warning(f"Model {model_name} tidak merespon/tidak ada. Mencoba model alternatif...")
+                        if "not found" in err_msg or "decommissioned" in err_msg or "404" in err_msg or "400" in err_msg or "does not exist" in err_msg:
+                            logging.warning(f"Model {model_name} ditolak server. Lanjut mencari yang aktif...")
                             continue
                         else:
-                            # Jika error karena masalah key/limit, lempar keluar untuk ganti API Key
                             raise ve
                 
-                # Jika semua list model vision di atas dicoba dan tetap gagal total
-                raise last_vision_error
+                if last_vision_error:
+                    return f"❌ Waduh, semua model Vision sedang diblokir/dimatikan sementara oleh Groq.\nError Server: {str(last_vision_error)}"
+                else:
+                    return "❌ Tidak ada model vision yang aktif di Groq saat ini."
                 
             else:
                 # Mode Chat Teks (Menggunakan Memori)
@@ -141,8 +156,6 @@ def get_ai_response(chat_id, prompt, img_pil=None):
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
     
 
-# ==========================================
-
 # --- Fungsi Menu Utama ---
 def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di bawah ini:"):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -154,28 +167,28 @@ def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di 
 def start(m):
     send_main_menu(m.chat.id, "✨ *Sistem Siap Digunakan!*")
 
-# --- FITUR BARU: Command Hapus History (/clear atau /hapus) ---
+# --- Command Hapus History ---
 @bot.message_handler(commands=['clear', 'hapus'])
 def clear_command(m):
     global chat_history
     if m.chat.id in chat_history:
         del chat_history[m.chat.id]
     user_states[m.chat.id] = "chat"
-    bot.reply_to(m, "🧹 *Memori chat berhasil dihapus via perintah!* Saya sudah melupakan obrolan kita sebelumnya. Mari mulai obrolan baru!", parse_mode="Markdown")
+    bot.reply_to(m, "🧹 *Memori chat berhasil dihapus via perintah!*", parse_mode="Markdown")
 
-# --- Handler Menu Navigasi & Tombol Hapus ---
+# --- Handler Menu Navigasi ---
 @bot.message_handler(func=lambda m: m.text in ["💬 Chat AI", "🤖 AI Vision", "📥 Downloader", "📁 Convert File", "🛠️ Utility Tools", "🧹 Hapus Memori Chat"])
 def menu(m):
     if m.text == "💬 Chat AI": 
         user_states[m.chat.id] = "chat"
-        bot.reply_to(m, "💬 *Mode Chat AI Aktif.*\nNgobrol yuk! Saya sekarang bisa mengingat percakapan kita.", parse_mode="Markdown")
+        bot.reply_to(m, "💬 *Mode Chat AI Aktif.*", parse_mode="Markdown")
     
     elif m.text == "🧹 Hapus Memori Chat":
         global chat_history
         if m.chat.id in chat_history:
             del chat_history[m.chat.id]
         user_states[m.chat.id] = "chat"
-        bot.reply_to(m, "🧹 *Memori dibersihkan!* Saya sudah melupakan obrolan kita sebelumnya.", parse_mode="Markdown")
+        bot.reply_to(m, "🧹 *Memori dibersihkan!*", parse_mode="Markdown")
 
     elif m.text == "🤖 AI Vision": 
         user_states[m.chat.id] = "ai_vision"
@@ -303,7 +316,7 @@ def handle_files(m):
             bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ Error: {str(e)}", m.chat.id, loading_msg.message_id)
 
-# --- Handler Text (Pesan Biasa / Chat AI) ---
+# --- Handler Text (Pesan Biasa / Chat AI / Downloader) ---
 @bot.message_handler(content_types=['text'])
 def handle_text(m):
     state = user_states.get(m.chat.id, "chat")
@@ -320,12 +333,43 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Mengunduh...*", parse_mode="Markdown")
+        out_filename = f"media_{m.chat.id}.mp4"
         try:
-            out_filename = f"media_{m.chat.id}.mp4"
-            with YoutubeDL({'format': 'best', 'outtmpl': out_filename}) as ydl: ydl.download([m.text])
-            with open(out_filename, 'rb') as f: bot.send_video(m.chat.id, f, caption="✨ Selesai!")
-            os.remove(out_filename); bot.delete_message(m.chat.id, loading_msg.message_id)
-        except Exception: bot.edit_message_text("❌ Gagal mengunduh!", m.chat.id, loading_msg.message_id)
+            # OPTIMASI ANTI-BOT UNTUK YT-DLP
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'outtmpl': out_filename,
+                'no_warnings': True,
+                'quiet': True,
+            }
+            
+            # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile (Android/iOS)
+            if "youtube.com" in m.text or "youtu.be" in m.text:
+                ydl_opts['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['android', 'ios']
+                    }
+                }
+                
+            # Jaga-jaga jika kamu menambahkan file cookies.txt ke server root
+            if os.path.exists('cookies.txt'):
+                ydl_opts['cookiefile'] = 'cookies.txt'
+                
+            with YoutubeDL(ydl_opts) as ydl: 
+                ydl.download([m.text])
+                
+            with open(out_filename, 'rb') as f: 
+                bot.send_video(m.chat.id, f, caption="✨ Selesai!")
+                
+            os.remove(out_filename)
+            bot.delete_message(m.chat.id, loading_msg.message_id)
+            
+        except Exception as e: 
+            logging.error(f"Gagal download: {str(e)}")
+            bot.edit_message_text(f"❌ *Gagal mengunduh!*\nYouTube mendeteksi bot/memblokir IP server cloud.\n\nDetail: `{str(e)[:120]}`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            if os.path.exists(out_filename):
+                os.remove(out_filename)
+        return
 
     elif state == "chat":
         bot.send_chat_action(m.chat.id, 'typing')
