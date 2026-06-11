@@ -102,74 +102,83 @@ def get_ai_response(chat_id, prompt):
 def download_media_via_api(url):
     # --- SISTEM PEMBERSIH LINK OTOMATIS ---
     url = url.strip()
-    
-    # 1. Paksa awalan menjadi huruf kecil (Https -> https)
     if url.startswith("Https://"): url = url.replace("Https://", "https://")
     elif url.startswith("Http://"): url = url.replace("Http://", "http://")
     
-    # 2. Potong ekor pelacak (tracking) yang mengganggu API
     if "?si=" in url: url = url.split("?si=")[0]
     if "&si=" in url: url = url.split("&si=")[0]
     if "instagram.com" in url and "?" in url: url = url.split("?")[0]
     if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
     
-    # 3. MENGUBAH FORMAT SHORTS MENJADI FORMAT VIDEO BIASA
-    if "youtube.com/shorts/" in url:
-        url = url.replace("youtube.com/shorts/", "youtube.com/watch?v=")
-    # --------------------------------------
+    if "youtube.com" in url or "youtu.be" in url:
+        vid_id = None
+        if "youtu.be/" in url: vid_id = url.split("youtu.be/")[1].split("?")[0]
+        elif "youtube.com/shorts/" in url: vid_id = url.split("youtube.com/shorts/")[1].split("?")[0]
+        elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
+        if vid_id: url = f"https://youtu.be/{vid_id}"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
-    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0"}
+
     # 1. Khusus TikTok
     if "tiktok.com" in url or "vt.tiktok" in url:
         try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers=headers, timeout=10).json().get('data', {}).get('play')
         except: pass
-        
-    # 2. Khusus YouTube
-    if "youtube.com" in url or "youtu.be" in url or "yt.be" in url:
-        try:
-            res = requests.get(f"https://api.siputzx.my.id/api/d/ytmp4?url={url}", headers=headers, timeout=15).json()
-            if res.get('data', {}).get('dl'): return res['data']['dl']
-        except: pass
-        try:
-            res = requests.get(f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}", headers=headers, timeout=15).json()
-            if res.get('url'): return res['url']
-            elif res.get('data', {}).get('url'): return res['data']['url']
-        except: pass
 
-    # 3. Khusus Instagram
+    # --- FUNGSI PELACAK LINK OTOMATIS DALAM JSON ---
+    def extract_vid_url(data):
+        if isinstance(data, dict):
+            # Cari kunci yang biasa dipakai untuk nyimpen link video MP4
+            for key in ['url', 'dl', 'link', 'video', 'media', 'play']:
+                if key in data and isinstance(data[key], str) and data[key].startswith('http') and not data[key].endswith('.jpg'):
+                    return data[key]
+            for k, v in data.items():
+                res = extract_vid_url(v)
+                if res: return res
+        elif isinstance(data, list) and len(data) > 0:
+            return extract_vid_url(data[0])
+        return None
+
+    # 2. Khusus YouTube (Mode Serbu 4 API)
+    if "youtu.be" in url or "youtube.com" in url:
+        yt_apis = [
+            f"https://api.siputzx.my.id/api/d/ytmp4?url={url}",
+            f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}",
+            f"https://api.agatz.my.id/api/ytmp4?url={url}",
+            f"https://api.vreden.my.id/api/ytmp4?url={url}"
+        ]
+        for api_url in yt_apis:
+            try:
+                res = requests.get(api_url, headers=headers, timeout=10).json()
+                vid_link = extract_vid_url(res)
+                if vid_link: return vid_link
+            except: continue
+
+    # 3. Khusus Instagram (Mode Serbu 4 API)
     if "instagram.com" in url:
-        try:
-            res = requests.get(f"https://api.siputzx.my.id/api/d/igdl?url={url}", headers=headers, timeout=15).json()
-            data = res.get('data')
-            if isinstance(data, list) and len(data) > 0: return data[0].get('url')
-            elif isinstance(data, dict): return data.get('url')
-        except: pass
-        try:
-            res = requests.get(f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}", headers=headers, timeout=15).json()
-            data = res.get("data")
-            if isinstance(data, list) and len(data) > 0: return data[0].get('url')
-        except: pass
+        ig_apis = [
+            f"https://api.siputzx.my.id/api/d/igdl?url={url}",
+            f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}",
+            f"https://api.agatz.my.id/api/igdl?url={url}",
+            f"https://api.vreden.my.id/api/igdownload?url={url}"
+        ]
+        for api_url in ig_apis:
+            try:
+                res = requests.get(api_url, headers=headers, timeout=10).json()
+                vid_link = extract_vid_url(res)
+                if vid_link: return vid_link
+            except: continue
 
-    # 4. Sapu Jagat (Cobalt API) dengan Penyamaran Khusus
+    # 4. Sapu Jagat (Cobalt API v10 Terbaru)
     try:
-        headers_cobalt = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Origin": "https://cobalt.tools",
-            "Referer": "https://cobalt.tools/",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        res = requests.post("https://api.cobalt.tools/api/json", json={"url": url}, headers=headers_cobalt, timeout=15)
-        data = res.json()
-        if data.get("status") in ["stream", "redirect"]: return data.get("url")
-        elif data.get("status") == "picker": return data["picker"][0]["url"]
+        cobalt_headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        res = requests.post("https://api.cobalt.tools/", json={"url": url}, headers=cobalt_headers, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("url"): return data.get("url")
     except: pass
     
     return None
+    
 
 # ==========================================================================
 # MENU & HANDLERS
