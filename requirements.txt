@@ -4,6 +4,6 @@ google-genai
 yt-dlp
 rembg[cpu]
 qrcode
-opencv-python
+opencv-python-headless
 numpy
 onnxruntime
