@@ -62,13 +62,13 @@ def get_ai_response(chat_id, prompt, img_pil=None):
             temp_client = Groq(api_key=active_key)
             
             if img_pil:
-                # Mode Vision (Foto) -> SUDAH DIPERBARUI KE MODEL YANG AKTIF
+                # Mode Vision (Foto) -> DIPERBARUI KE MODEL PRODUKSI YANG STABIL
                 buffered = io.BytesIO()
                 img_pil.save(buffered, format="JPEG")
                 img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 
                 response = temp_client.chat.completions.create(
-                    model="llama-3.2-11b-vision-preview",  # <-- Menggunakan versi 11b vision yang aktif & stabil
+                    model="llama-3.2-11b-vision-instruct",  # <-- Menggunakan versi produksi resmi (bukan preview lagi)
                     messages=[{
                         "role": "user",
                         "content": [
@@ -305,4 +305,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-            
+        
