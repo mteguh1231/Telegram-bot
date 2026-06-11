@@ -434,4 +434,4 @@ def handle_text(m):
         except Exception: bot.edit_message_text("❌ *Gagal mengunduh!*", m.chat.id, loading_msg.message_id)
 
     elif state == "chat":
-        loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdo
+        loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="wn
