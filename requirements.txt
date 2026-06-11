@@ -1,12 +1,11 @@
 pyTelegramBotAPI
 Pillow
 groq
-yt-dlp
+requests
 pdf2docx
 PyMuPDF
 pdfplumber
 pandas
-rembg[cpu]
 opencv-python-headless
 numpy
 qrcode
