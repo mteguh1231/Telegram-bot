@@ -112,6 +112,10 @@ def download_media_via_api(url):
     if "&si=" in url: url = url.split("&si=")[0]
     if "instagram.com" in url and "?" in url: url = url.split("?")[0]
     if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
+    
+    # 3. MENGUBAH FORMAT SHORTS MENJADI FORMAT VIDEO BIASA
+    if "youtube.com/shorts/" in url:
+        url = url.replace("youtube.com/shorts/", "youtube.com/watch?v=")
     # --------------------------------------
 
     headers = {
@@ -150,9 +154,16 @@ def download_media_via_api(url):
             if isinstance(data, list) and len(data) > 0: return data[0].get('url')
         except: pass
 
-    # 4. Sapu Jagat (Cobalt API)
+    # 4. Sapu Jagat (Cobalt API) dengan Penyamaran Khusus
     try:
-        res = requests.post("https://api.cobalt.tools/api/json", json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json"}, timeout=15)
+        headers_cobalt = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Origin": "https://cobalt.tools",
+            "Referer": "https://cobalt.tools/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        res = requests.post("https://api.cobalt.tools/api/json", json={"url": url}, headers=headers_cobalt, timeout=15)
         data = res.json()
         if data.get("status") in ["stream", "redirect"]: return data.get("url")
         elif data.get("status") == "picker": return data["picker"][0]["url"]
@@ -385,4 +396,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-    
+        
