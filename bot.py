@@ -60,15 +60,13 @@ class LoadingAnim:
                 bot.edit_message_text(f"{frame} *{self.text}...*", self.chat_id, self.message_id, parse_mode="Markdown")
                 idx += 1
             except: 
-                pass # Abaikan jika Telegram menolak edit karena teks sama
+                pass 
             
-            # Waktu tunggu dipecah kecil agar bisa di-Stop kapan saja secara instan
             for _ in range(20): 
                 if not self.running: break
                 time.sleep(0.1)
 
     def update_text(self, new_text):
-        """Fungsi untuk mengubah teks milestone saat loading berjalan"""
         self.text = new_text
 
     def stop(self):
@@ -76,7 +74,7 @@ class LoadingAnim:
 
 
 # ==========================================================================
-# FUNGSI AI CHAT & DOWNLOADER VIP APIFY
+# FUNGSI AI CHAT & DOWNLOADER VIP APIFY (MODE PELACAK)
 # ==========================================================================
 def get_ai_response(chat_id, prompt):
     global current_key_index, chat_history
@@ -134,16 +132,18 @@ def download_media_via_api(url):
     if "instagram.com" in url or "youtu.be" in url or "youtube.com" in url:
         APIFY_TOKEN = os.getenv('APIFY_TOKEN')
         
-        # Cek apakah token benar-benar sudah dipasang di Server
         if not APIFY_TOKEN:
             raise Exception("LUPA PASANG TOKEN: Variabel APIFY_TOKEN belum ada di setting Server kamu!")
 
         try:
-            ACTOR_ID = "hVlkT1FrZB15YsUDo" 
+            # Menggunakan Actor Publik Gratisan
+            ACTOR_ID = "apilabs~instagram-downloader" 
             apify_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
             
-            # Kita buat format sesederhana mungkin agar Apify tidak bingung
-            payload = {"url": url}
+            payload = {
+                "urls": [url],
+                "proxy": {"useApifyProxy": True}
+            }
             
             res = requests.post(apify_url, json=payload, timeout=60) 
             
@@ -151,22 +151,34 @@ def download_media_via_api(url):
                 data = res.json()
                 if isinstance(data, list) and len(data) > 0:
                     item = data[0]
-                    for key in ['videoUrl', 'video_url', 'url', 'displayUrl', 'media_url']:
-                        if key in item and isinstance(item[key], str) and ('mp4' in item[key] or 'video' in item[key]):
+                    for key in ['video_url', 'videoUrl', 'downloadUrl', 'url']:
+                        if key in item and isinstance(item[key], str) and 'mp4' in item[key]:
                             return item[key]
-                
-                # Jika Apify berhasil menyedot web, tapi tidak menemukan link video
-                raise Exception(f"APIFY BINGUNG: Data sukses ditarik tapi aneh bentuknya. Isi: {str(data)[:100]}")
+                raise Exception(f"APIFY BINGUNG: Data sukses ditarik tapi aneh. Isi: {str(data)[:100]}")
             else:
-                # Jika token salah atau sistem ditolak oleh server Apify
                 raise Exception(f"APIFY MARAH (Kode {res.status_code}): {res.text[:150]}")
                 
         except Exception as e:
-            # Lempar error aslinya agar langsung dibaca oleh bot Telegram!
+            # Mengirimkan error langsung ke bot
             raise Exception(str(e))
 
+    # 3. BENTENG CADANGAN TERAKHIR (Cobalt Server Komunitas)
+    cobalt_nodes = [
+        "https://co.wuk.sh/api/json",
+        "https://cobalt.q-n.space/api/json",
+        "https://api.cobalt.tools/api/json"
+    ]
+    for node in cobalt_nodes:
+        try:
+            res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=12)
+            if res.status_code in [200, 201]:
+                d = res.json()
+                if d.get("status") in ["stream", "redirect"]: return d.get("url")
+                elif d.get("status") == "picker": return d["picker"][0]["url"]
+                elif d.get("url"): return d.get("url")
+        except: continue
+            
     return None
-        
 
 # ==========================================================================
 # MENU & HANDLERS
@@ -346,13 +358,11 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
-        # Animasi dimulai dengan status pertama
         anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menghubungi Server Apify")
         try:
             video_link = download_media_via_api(m.text)
             
             if video_link:
-                # Mengubah teks animasi (Pasti akan terlihat jika file besar)
                 anim.update_text("Menyedot video ke Telegram")
                 
                 temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
@@ -369,12 +379,13 @@ def handle_text(m):
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Pastikan Token Apify benar atau link video tidak diprivate.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Link tidak valid atau API sedang maintenance.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             anim.stop()
             logging.error(f"Gagal download: {str(e)}")
-            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: Coba ulangi beberapa saat lagi.`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            # Ini akan membocorkan teks error ke Telegram kamu
+            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: {str(e)}`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             for file in os.listdir('.'):
                 if file.startswith(f"vid_{m.chat.id}"):
                     try: os.remove(file)
@@ -394,4 +405,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-        
+    
