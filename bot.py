@@ -4,6 +4,7 @@ import time
 import logging
 import requests
 import zipfile
+import threading # Library tambahan untuk animasi
 
 import telebot
 from telebot import types
@@ -32,97 +33,131 @@ user_states = {}
 # CONFIGURATION: DAFTAR MODEL AI GROQ
 # ==========================================================================
 TEXT_MODEL = "llama-3.3-70b-versatile"
-# ==========================================================================
-
 chat_history = {} 
 current_key_index = 0
 
+# ==========================================================================
+# FUNGSI ANIMASI LOADING BERGERAK (THREADING)
+# ==========================================================================
+class LoadingAnim:
+    def __init__(self, chat_id, message_id, text="Memproses"):
+        self.chat_id = chat_id
+        self.message_id = message_id
+        self.text = text
+        self.running = True
+        self.thread = threading.Thread(target=self._animate)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def _animate(self):
+        # Frame animasi yang akan berputar
+        frames = ["⏳", "⌛", "🔄", "🔃"]
+        idx = 0
+        while self.running:
+            try:
+                frame = frames[idx % len(frames)]
+                bot.edit_message_text(f"{frame} *{self.text}...*", self.chat_id, self.message_id, parse_mode="Markdown")
+                idx += 1
+            except: 
+                pass # Abaikan error jika pesan sudah dihapus/berubah
+            
+            # Waktu tunggu 1.5 detik per frame agar tidak kena limit Telegram (Flood Wait)
+            for _ in range(15): 
+                if not self.running: break
+                time.sleep(0.1)
+
+    def stop(self):
+        self.running = False
+
+
+# ==========================================================================
+# FUNGSI AI CHAT & DOWNLOADER
+# ==========================================================================
 def get_ai_response(chat_id, prompt):
-    global current_key_index
-    global chat_history
-    
+    global current_key_index, chat_history
     raw_keys = os.getenv('GROQ_KEYS') or os.getenv('GROQ_KEY', '')
     API_KEYS = [k.strip().strip('"').strip("'") for k in raw_keys.split(',')] if raw_keys else []
     API_KEYS = [k for k in API_KEYS if k]
-    
     if not API_KEYS: return "❌ Variabel 'GROQ_KEYS' belum diisi di server."
         
     attempts = 0
-    total_keys = len(API_KEYS)
-    
-    while attempts < total_keys:
-        active_key = API_KEYS[current_key_index % total_keys]
+    while attempts < len(API_KEYS):
+        active_key = API_KEYS[current_key_index % len(API_KEYS)]
         try:
             temp_client = Groq(api_key=active_key)
-            
-            # Mode Chat Teks
             if chat_id not in chat_history:
                 chat_history[chat_id] = [{"role": "system", "content": "Kamu adalah asisten AI yang ramah, pintar, dan menggunakan bahasa Indonesia yang santai."}]
             
             chat_history[chat_id].append({"role": "user", "content": prompt})
-            
             if len(chat_history[chat_id]) > 11:
                 chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-10:]
             
-            response = temp_client.chat.completions.create(
-                model=TEXT_MODEL,
-                messages=chat_history[chat_id]
-            )
-            
+            response = temp_client.chat.completions.create(model=TEXT_MODEL, messages=chat_history[chat_id])
             bot_reply = response.choices[0].message.content
             chat_history[chat_id].append({"role": "assistant", "content": bot_reply})
-            
             return bot_reply
             
         except Exception as e:
-            current_key_index = (current_key_index + 1) % total_keys
+            current_key_index += 1
             attempts += 1
-                
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
-# --- FUNGSI DOWNLOADER MULTI-API LAPIS BAJA ---
 def download_media_via_api(url):
-    # Lapis 1: Cobalt API (Kualitas terbaik, tanpa watermark)
-    try:
-        res = requests.post("https://api.cobalt.tools/api/json", json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json"}, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("status") in ["stream", "redirect"]: return data.get("url")
-            elif data.get("status") == "picker": return data["picker"][0]["url"]
-        elif res.status_code == 201: # fallback logic for some response types
-            data = res.json()
-            if data.get("url"): return data.get("url")
-    except: pass
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
     
-    # Lapis 2: Khusus TikTok (TikWM)
+    # 1. Khusus TikTok
     if "tiktok.com" in url or "vt.tiktok" in url:
-        try:
-            res = requests.get(f"https://www.tikwm.com/api/?url={url}", timeout=10).json()
-            return res.get('data', {}).get('play')
+        try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers=headers, timeout=10).json().get('data', {}).get('play')
         except: pass
         
-    # Lapis 3: Fallback YouTube & Instagram (Siputzx API)
-    try:
-        if "youtube.com" in url or "youtu.be" in url or "yt.be" in url:
-            res = requests.get(f"https://api.siputzx.my.id/api/d/ytmp4?url={url}", timeout=15).json()
-            return res.get('data', {}).get('dl')
-        elif "instagram.com" in url:
-            res = requests.get(f"https://api.siputzx.my.id/api/d/igdl?url={url}", timeout=15).json()
+    # 2. Khusus YouTube
+    if "youtube.com" in url or "youtu.be" in url or "yt.be" in url:
+        try:
+            res = requests.get(f"https://api.siputzx.my.id/api/d/ytmp4?url={url}", headers=headers, timeout=15).json()
+            if res.get('data', {}).get('dl'): return res['data']['dl']
+        except: pass
+        try:
+            res = requests.get(f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}", headers=headers, timeout=15).json()
+            if res.get('url'): return res['url']
+            elif res.get('data', {}).get('url'): return res['data']['url']
+        except: pass
+
+    # 3. Khusus Instagram
+    if "instagram.com" in url:
+        try:
+            res = requests.get(f"https://api.siputzx.my.id/api/d/igdl?url={url}", headers=headers, timeout=15).json()
             data = res.get('data')
             if isinstance(data, list) and len(data) > 0: return data[0].get('url')
             elif isinstance(data, dict): return data.get('url')
+        except: pass
+        try:
+            res = requests.get(f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}", headers=headers, timeout=15).json()
+            data = res.get("data")
+            if isinstance(data, list) and len(data) > 0: return data[0].get('url')
+        except: pass
+
+    # 4. Sapu Jagat (Cobalt API)
+    try:
+        res = requests.post("https://api.cobalt.tools/api/json", json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json"}, timeout=15)
+        data = res.json()
+        if data.get("status") in ["stream", "redirect"]: return data.get("url")
+        elif data.get("status") == "picker": return data["picker"][0]["url"]
     except: pass
     
     return None
 
-# --- Fungsi Menu Utama ---
+# ==========================================================================
+# MENU & HANDLERS
+# ==========================================================================
 def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di bawah ini:"):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    # Fitur AI Vision resmi dihapus agar menu rapi
+    # AI Vision sudah dihapus dari menu
     markup.add("💬 Chat AI", "📥 Downloader", "📁 Convert File", "🛠️ Utility Tools", "🧹 Hapus Memori Chat")
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
-# --- Command Start & Hapus History ---
 @bot.message_handler(commands=['start'])
 def start(m): send_main_menu(m.chat.id, "✨ *Sistem Siap Digunakan!*")
 
@@ -133,7 +168,6 @@ def clear_command(m):
     user_states[m.chat.id] = "chat"
     bot.reply_to(m, "🧹 *Memori chat berhasil dihapus!*", parse_mode="Markdown")
 
-# --- Handler Menu Navigasi ---
 @bot.message_handler(func=lambda m: m.text in ["💬 Chat AI", "📥 Downloader", "📁 Convert File", "🛠️ Utility Tools", "🧹 Hapus Memori Chat"])
 def menu(m):
     if m.text == "💬 Chat AI": 
@@ -207,7 +241,6 @@ def handle_callbacks(call):
         bot.edit_message_text(msg, cid, mid, parse_mode="Markdown")
         return
 
-# --- Handler File & Foto ---
 @bot.message_handler(content_types=['document', 'photo'])
 def handle_files(m):
     state = user_states.get(m.chat.id, "chat")
@@ -215,22 +248,25 @@ def handle_files(m):
     file_name = m.document.file_name if m.document else "image.jpg"
 
     if state == "set_rmbg":
-        loading_msg = bot.reply_to(m, "🪄 *Menghapus background (Cloud Mode)...*", parse_mode="Markdown")
+        loading_msg = bot.reply_to(m, "🪄 *Menyiapkan gambar...*", parse_mode="Markdown")
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menghapus background")
         try:
             API_KEY = os.getenv('REMOVE_BG_KEY')
             if not API_KEY:
+                anim.stop()
                 bot.edit_message_text("❌ *Gagal:* Variabel `REMOVE_BG_KEY` belum disetting di Variables Server!", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
                 return
 
             file_path = bot.get_file(file_id).file_path
             file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
             
-            # Request ke cloud API Remove.bg yang super hemat RAM
             response = requests.post(
                 'https://api.remove.bg/v1.0/removebg',
                 data={'image_url': file_url, 'size': 'auto'},
                 headers={'X-Api-Key': API_KEY},
             )
+            
+            anim.stop() # Hentikan animasi
             
             if response.status_code == requests.codes.ok:
                 out_io = io.BytesIO(response.content)
@@ -239,6 +275,7 @@ def handle_files(m):
             else:
                 bot.edit_message_text(f"❌ *Gagal:* Pastikan API Key valid atau kuota Remove.bg masih ada.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
         except Exception as e: 
+            anim.stop()
             bot.edit_message_text(f"❌ Error: {str(e)}", m.chat.id, loading_msg.message_id)
 
     elif state == "set_qr_read":
@@ -254,7 +291,8 @@ def handle_files(m):
         except Exception as e: bot.edit_message_text(f"❌ Error: {str(e)}", m.chat.id, loading_msg.message_id)
 
     elif state == "set_compress":
-        loading_msg = bot.reply_to(m, "🗜️ *Kompresi file...*", parse_mode="Markdown")
+        loading_msg = bot.reply_to(m, "🗜️ *Menyiapkan kompresi...*", parse_mode="Markdown")
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Mengkompresi file")
         try:
             file_path = bot.get_file(file_id).file_path
             file_data = bot.download_file(file_path)
@@ -267,11 +305,14 @@ def handle_files(m):
                 with zipfile.ZipFile(out_io, 'w', zipfile.ZIP_DEFLATED) as zipf: zipf.writestr(file_name, file_data)
                 ext = "zip"
             out_io.seek(0)
+            anim.stop()
             bot.send_document(m.chat.id, out_io, visible_file_name=f"compressed.{ext}", caption="✨ Selesai!")
             bot.delete_message(m.chat.id, loading_msg.message_id)
-        except Exception as e: bot.edit_message_text(f"❌ Error: {str(e)}", m.chat.id, loading_msg.message_id)
+        except Exception as e: 
+            anim.stop()
+            bot.edit_message_text(f"❌ Error: {str(e)}", m.chat.id, loading_msg.message_id)
 
-# --- Handler Text (Pesan Biasa / Chat AI / Downloader) ---
+
 @bot.message_handler(content_types=['text'])
 def handle_text(m):
     state = user_states.get(m.chat.id, "chat")
@@ -287,30 +328,34 @@ def handle_text(m):
         return
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
-        loading_msg = bot.reply_to(m, "⏳ *Membongkar link dari server...*", parse_mode="Markdown")
+        loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
+        # Menjalankan animasi loading berjalan
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Membongkar link dari server")
         try:
             video_link = download_media_via_api(m.text)
             
             if video_link:
-                bot.edit_message_text("📤 *Video berhasil ditarik! Menyiapkan pengiriman ke Telegram...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                # Mengubah status animasi saat mengirim file
+                anim.text = "Mengirim video ke Telegram"
                 
                 temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
                 with requests.get(video_link, stream=True, timeout=30) as r:
                     r.raise_for_status()
                     with open(temp_filename, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
+                        for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
                 
-                bot.edit_message_text("📤 *Sedang mengirim video ke obrolan ini...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
                 with open(temp_filename, 'rb') as f:
                     bot.send_video(m.chat.id, f, caption="✨ *Selesai!*", parse_mode="Markdown", timeout=120)
                 
                 os.remove(temp_filename)
+                anim.stop() # Stop Animasi
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
-                bot.edit_message_text("❌ *Gagal:* Sistem API tertahan oleh hak cipta / akun tersebut di-private.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                anim.stop()
+                bot.edit_message_text("❌ *Gagal:* Sistem API tertahan oleh hak cipta / API sedang maintenance.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
+            anim.stop()
             logging.error(f"Gagal download API: {str(e)}")
             bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: {str(e)[:150]}...`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             for file in os.listdir('.'):
@@ -320,13 +365,16 @@ def handle_text(m):
         return
 
     elif state == "chat":
-        bot.send_chat_action(m.chat.id, 'typing')
+        loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Mengetik balasan")
         try:
             reply_text = get_ai_response(m.chat.id, m.text)
-            bot.reply_to(m, reply_text, parse_mode="Markdown")
+            anim.stop()
+            bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
         except Exception as e: 
-            bot.reply_to(m, f"❌ *Bot Sibuk:* Coba lagi.")
+            anim.stop()
+            bot.edit_message_text(f"❌ *Bot Sibuk:* Coba lagi nanti.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-    
+                            
