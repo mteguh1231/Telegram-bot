@@ -5,14 +5,13 @@ import logging
 import requests
 import zipfile
 import threading
-import re
 
 import telebot
 from telebot import types
 from PIL import Image
 from groq import Groq
 
-# --- Pengaman Import Library Opsional ---
+# --- Pengaman Import Library ---
 try: from pdf2docx import Converter
 except ImportError: Converter = None
 try: import fitz
@@ -38,7 +37,7 @@ chat_history = {}
 current_key_index = 0
 
 # ==========================================================================
-# FUNGSI ANIMASI LOADING BERGERAK (VERSI ANTI-LIMIT TELEGRAM)
+# FUNGSI ANIMASI LOADING BERGERAK
 # ==========================================================================
 class LoadingAnim:
     def __init__(self, chat_id, message_id, text="Memproses"):
@@ -56,12 +55,10 @@ class LoadingAnim:
         while self.running:
             try:
                 frame = frames[idx % len(frames)]
-                # Jeda aman Telegram adalah 2 detik per edit pesan agar tidak error 429
                 bot.edit_message_text(f"{frame} *{self.text}...*", self.chat_id, self.message_id, parse_mode="Markdown")
                 idx += 1
             except: 
                 pass 
-            
             for _ in range(20): 
                 if not self.running: break
                 time.sleep(0.1)
@@ -72,9 +69,8 @@ class LoadingAnim:
     def stop(self):
         self.running = False
 
-
 # ==========================================================================
-# FUNGSI AI CHAT & DOWNLOADER VIP APIFY (MODE PELACAK)
+# FUNGSI AI CHAT
 # ==========================================================================
 def get_ai_response(chat_id, prompt):
     global current_key_index, chat_history
@@ -105,8 +101,10 @@ def get_ai_response(chat_id, prompt):
             attempts += 1
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
+# ==========================================================================
+# DOWNLOADER PASUKAN COBALT (TANPA API KEY)
+# ==========================================================================
 def download_media_via_api(url):
-    # --- SISTEM PEMBERSIH LINK OTOMATIS ---
     url = url.strip()
     if url.startswith("Https://"): url = url.replace("Https://", "https://")
     elif url.startswith("Http://"): url = url.replace("Http://", "http://")
@@ -123,61 +121,39 @@ def download_media_via_api(url):
         elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
         if vid_id: url = f"https://youtu.be/{vid_id}"
 
-    # 1. TIKTOK 
     if "tiktok.com" in url or "vt.tiktok" in url:
         try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json().get('data', {}).get('play')
         except: pass
 
-    # 2. JALUR VIP APIFY (MODE PELACAK ERROR)
-    if "instagram.com" in url or "youtu.be" in url or "youtube.com" in url:
-        APIFY_TOKEN = os.getenv('APIFY_TOKEN')
+    if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url:
+        cobalt_servers = [
+            "https://co.wuk.sh/api/json",
+            "https://cobalt.catterall.sh/api/json",
+            "https://cobalt.q-n.space/api/json",
+            "https://cobalt.tcr.gg/api/json",
+            "https://api.cobalt.tools/api/json",
+            "https://dl.khub.win/api/json",
+            "https://cobalt.zackmyers.io/api/json",
+            "https://cobalt.macz.uz/api/json"
+        ]
         
-        if not APIFY_TOKEN:
-            raise Exception("LUPA PASANG TOKEN: Variabel APIFY_TOKEN belum ada di setting Server kamu!")
+        cobalt_headers = {
+            "Accept": "application/json", 
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
 
-        try:
-            # Menggunakan Actor Publik Gratisan
-            ACTOR_ID = "apilabs~instagram-downloader" 
-            apify_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
-            
-            payload = {
-                "urls": [url],
-                "proxy": {"useApifyProxy": True}
-            }
-            
-            res = requests.post(apify_url, json=payload, timeout=60) 
-            
-            if res.status_code in [200, 201]:
-                data = res.json()
-                if isinstance(data, list) and len(data) > 0:
-                    item = data[0]
-                    for key in ['video_url', 'videoUrl', 'downloadUrl', 'url']:
-                        if key in item and isinstance(item[key], str) and 'mp4' in item[key]:
-                            return item[key]
-                raise Exception(f"APIFY BINGUNG: Data sukses ditarik tapi aneh. Isi: {str(data)[:100]}")
-            else:
-                raise Exception(f"APIFY MARAH (Kode {res.status_code}): {res.text[:150]}")
-                
-        except Exception as e:
-            # Mengirimkan error langsung ke bot
-            raise Exception(str(e))
+        for server in cobalt_servers:
+            try:
+                res = requests.post(server, json={"url": url}, headers=cobalt_headers, timeout=12)
+                if res.status_code in [200, 201]:
+                    data = res.json()
+                    if data.get("status") in ["stream", "redirect"]: return data.get("url")
+                    elif data.get("status") == "picker": return data["picker"][0]["url"]
+                    elif data.get("url"): return data.get("url")
+            except:
+                continue
 
-    # 3. BENTENG CADANGAN TERAKHIR (Cobalt Server Komunitas)
-    cobalt_nodes = [
-        "https://co.wuk.sh/api/json",
-        "https://cobalt.q-n.space/api/json",
-        "https://api.cobalt.tools/api/json"
-    ]
-    for node in cobalt_nodes:
-        try:
-            res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=12)
-            if res.status_code in [200, 201]:
-                d = res.json()
-                if d.get("status") in ["stream", "redirect"]: return d.get("url")
-                elif d.get("status") == "picker": return d["picker"][0]["url"]
-                elif d.get("url"): return d.get("url")
-        except: continue
-            
     return None
 
 # ==========================================================================
@@ -358,12 +334,12 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
-        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menghubungi Server Apify")
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menyisir jaringan server")
         try:
             video_link = download_media_via_api(m.text)
             
             if video_link:
-                anim.update_text("Menyedot video ke Telegram")
+                anim.update_text("Mengirim video ke Telegram")
                 
                 temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
                 with requests.get(video_link, stream=True, timeout=30) as r:
@@ -379,30 +355,38 @@ def handle_text(m):
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Link tidak valid atau API sedang maintenance.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Semua server sedang sibuk atau video diprivate.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             anim.stop()
             logging.error(f"Gagal download: {str(e)}")
-            # Ini akan membocorkan teks error ke Telegram kamu
-            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: {str(e)}`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: Coba ulangi beberapa saat lagi.`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             for file in os.listdir('.'):
                 if file.startswith(f"vid_{m.chat.id}"):
                     try: os.remove(file)
                     except: pass
         return
 
+    # === BAGIAN AI YANG DIPERBAIKI (ANTI-ERROR MARKDOWN) ===
     elif state == "chat":
         loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
         anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Mengetik balasan")
         try:
             reply_text = get_ai_response(m.chat.id, m.text)
             anim.stop()
-            bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            
+            try:
+                # PERTAMA: Coba kirim dengan gaya tebal/miring (Markdown)
+                bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            except Exception as e:
+                # KEDUA: Kalau ditolak Telegram karena simbol acak, paksa kirim teks biasa!
+                logging.error(f"Telegram menolak Markdown: {e}")
+                bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id)
+                
         except Exception as e: 
             anim.stop()
-            bot.edit_message_text(f"❌ *Bot Sibuk:* Coba lagi nanti.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Sistem AI Error:* {str(e)[:100]}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-    
+        
