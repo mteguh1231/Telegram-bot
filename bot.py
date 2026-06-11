@@ -7,24 +7,28 @@ import sys
 import zipfile
 
 # --- AUTO INSTALLER UNTUK HP ---
-def install_library(package_name):
+# --- AUTO INSTALLER UNTUK HP / SERVER ---
+def install_library(import_name, pip_name=None):
+    if pip_name is None:
+        pip_name = import_name
+        
     try:
-        __import__(package_name)
+        __import__(import_name)
     except ImportError:
-        logging.info(f"Mengunduh library {package_name} otomatis di HP...")
+        logging.info(f"Mengunduh library {pip_name} otomatis...")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
-            logging.info(f"Sukses menginstal {package_name}!")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
+            logging.info(f"Sukses menginstal {pip_name}!")
         except Exception as e:
-            logging.error(f"Gagal menginstal {package_name}: {str(e)}")
+            logging.error(f"Gagal menginstal {pip_name}: {str(e)}")
 
-new_packages = ["rembg", "onnxruntime", "qrcode", "opencv-python", "numpy"]
+# Jalankan pengecekan library
+install_library("rembg")
+install_library("onnxruntime")
+install_library("qrcode")
+install_library("cv2", "opencv-python-headless")
+install_library("numpy")
 
-for package in new_packages:
-    if package == "opencv-python":
-        install_library("cv2")
-    else:
-        install_library(package)
 
 import telebot
 from telebot import types
