@@ -6,8 +6,8 @@ pdf2docx
 PyMuPDF
 pdfplumber
 pandas
-rembg
-opencv-python
+rembg[cpu]
+opencv-python-headless
 numpy
 qrcode
 openpyxl
