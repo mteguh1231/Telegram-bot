@@ -6,8 +6,7 @@ import subprocess
 import sys
 import zipfile
 
-# --- [BARU] AUTO INSTALLER UNTUK HP ---
-# Script ini akan otomatis mendownload library baru yang dibutuhkan tanpa terminal
+# --- AUTO INSTALLER UNTUK HP ---
 def install_library(package_name):
     try:
         __import__(package_name)
@@ -19,16 +18,12 @@ def install_library(package_name):
         except Exception as e:
             logging.error(f"Gagal menginstal {package_name}: {str(e)}")
 
-# Jalankan penginstalan otomatis untuk library baru sebelum bot aktif
 new_packages = ["rembg", "qrcode", "opencv-python", "numpy"]
 for package in new_packages:
-    # Khusus opencv-python, nama importnya adalah cv2
     if package == "opencv-python":
         install_library("cv2")
     else:
         install_library(package)
-
-# --- Akhir Auto Installer ---
 
 import telebot
 from telebot import types
@@ -72,16 +67,55 @@ try:
 except ImportError:
     qrcode = None
 
-# --- Setup Konfigurasi ---
+# --- Setup Konfigurasi Utama ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-
 bot = telebot.TeleBot(BOT_TOKEN)
-ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
-
 user_states = {}
-user_chats = {} 
+
+# ==========================================
+# ROTASI API KEY GEMINI VIA RAILWAY VARIABLES
+# ==========================================
+# Membaca string panjang dari Railway, lalu memotongnya berdasarkan tanda koma menjadi List
+raw_keys = os.getenv('GEMINI_KEYS', '')
+API_KEYS = [k.strip() for k in raw_keys.split(',')] if raw_keys else []
+current_key_index = 0
+
+def get_ai_response(prompt, img_pil=None):
+    global current_key_index
+    
+    if not API_KEYS or API_KEYS == ['']:
+        return "❌ Batalkan proses! Variabel 'GEMINI_KEYS' belum diisi atau salah format di Railway."
+        
+    attempts = 0
+    while attempts < len(API_KEYS):
+        active_key = API_KEYS[current_key_index]
+        temp_client = genai.Client(api_key=active_key)
+        
+        try:
+            if img_pil:
+                response = temp_client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[prompt, img_pil]
+                )
+            else:
+                response = temp_client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=prompt
+                )
+            return response.text
+            
+        except Exception as e:
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                logging.warning(f"Key indeks ke-{current_key_index} kena limit. Rotasi ke key berikutnya!")
+                current_key_index = (current_key_index + 1) % len(API_KEYS)
+                attempts += 1
+            else:
+                raise e 
+                
+    return "❌ Waduh, semua API Key yang didaftarkan di Railway sedang limit! Coba beberapa menit lagi."
+
+# ==========================================
 
 # --- Fungsi Animasi ---
 def animate_loading(chat_id, message_id, steps, delay=0.4):
@@ -198,12 +232,9 @@ def handle_callbacks(call):
 @bot.message_handler(content_types=['document', 'photo'])
 def handle_files(m):
     state = user_states.get(m.chat.id, "chat")
-    
-    # Deteksi File ID
     file_id = m.document.file_id if m.document else m.photo[-1].file_id
     file_name = m.document.file_name if m.document else "image.jpg"
 
-    # 7. AI VISION / OCR
     if state == "ai_vision":
         loading_msg = bot.reply_to(m, "👁️ *Menganalisis gambar...*", parse_mode="Markdown")
         try:
@@ -212,15 +243,11 @@ def handle_files(m):
             img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
             
             prompt = m.caption if m.caption else "Ekstrak teks (OCR) jika ada, lalu jelaskan isi gambar ini secara detail."
-            response = ai_client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[prompt, img_pil]
-            )
-            bot.edit_message_text(f"🤖 *Hasil AI Vision:*\n\n{response.text}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            reply_text = get_ai_response(prompt, img_pil=img_pil)
+            bot.edit_message_text(f"🤖 *Hasil AI Vision:*\n\n{reply_text}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
         except Exception as e: 
             bot.edit_message_text(f"❌ *Error AI Vision:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 8. HAPUS BACKGROUND (Premium Image)
     elif state == "set_rmbg":
         loading_msg = bot.reply_to(m, "🪄 *Menghapus background, mohon tunggu...*", parse_mode="Markdown")
         try:
@@ -235,7 +262,6 @@ def handle_files(m):
             bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 9. BACA QR CODE
     elif state == "set_qr_read":
         loading_msg = bot.reply_to(m, "🔍 *Mendeteksi QR Code...*", parse_mode="Markdown")
         try:
@@ -255,7 +281,6 @@ def handle_files(m):
                 bot.edit_message_text("❌ *Gagal mendeteksi.* Pastikan gambar jelas dan berisi QR Code.", m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 10. KOMPRESI FILE (Pengecil Ukuran)
     elif state == "set_compress":
         loading_msg = bot.reply_to(m, "🗜️ *Mengompresi file...*", parse_mode="Markdown")
         try:
@@ -278,7 +303,6 @@ def handle_files(m):
             bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error Kompresi:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 1. PDF KE WORD (Lama)
     elif state == "set_pdf2word" and m.document:
         loading_msg = bot.reply_to(m, "📥 *Memproses PDF...*", parse_mode="Markdown")
         try:
@@ -297,7 +321,6 @@ def handle_files(m):
             os.remove(in_file); os.remove(out_file); bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 2. WORD KE PDF (Lama)
     elif state == "set_word2pdf" and m.document:
         loading_msg = bot.reply_to(m, "📥 *Memproses Word...*", parse_mode="Markdown")
         try:
@@ -314,7 +337,6 @@ def handle_files(m):
             os.remove(in_file); os.remove(out_file); bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 3. GAMBAR KE JPG (Lama)
     elif state == "set_any2jpg":
         loading_msg = bot.reply_to(m, "📥 *Mengonversi gambar...*", parse_mode="Markdown")
         try:
@@ -330,7 +352,6 @@ def handle_files(m):
             bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 4. JPG KE PDF (Lama)
     elif state == "set_jpg2pdf":
         loading_msg = bot.reply_to(m, "📥 *Memproses PDF...*", parse_mode="Markdown")
         try:
@@ -345,7 +366,6 @@ def handle_files(m):
             bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 5. PDF KE JPG (Lama)
     elif state == "set_pdf2jpg" and m.document:
         loading_msg = bot.reply_to(m, "📥 *Merender PDF...*", parse_mode="Markdown")
         try:
@@ -362,7 +382,6 @@ def handle_files(m):
             os.remove(in_file); bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
 
-    # 6. PDF KE EXCEL (Lama)
     elif state == "set_pdf2excel" and m.document:
         loading_msg = bot.reply_to(m, "📥 *Mengekstrak data...*", parse_mode="Markdown")
         try:
@@ -389,7 +408,6 @@ def handle_files(m):
 def handle_text(m):
     state = user_states.get(m.chat.id, "chat")
     
-    # BUAT QR CODE
     if state == "set_qr_gen":
         loading_msg = bot.reply_to(m, "🔳 *Merender QR Code...*", parse_mode="Markdown")
         try:
@@ -403,7 +421,6 @@ def handle_text(m):
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
         return
 
-    # DOWNLOADER (Lama)
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Mengunduh media...*", parse_mode="Markdown")
         try:
@@ -416,16 +433,5 @@ def handle_text(m):
             os.remove(out_filename); bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception: bot.edit_message_text("❌ *Gagal mengunduh!*", m.chat.id, loading_msg.message_id)
 
-    # CHAT AI (Lama)
     elif state == "chat":
-        if m.chat.id not in user_chats: 
-            user_chats[m.chat.id] = ai_client.chats.create(model="gemini-2.0-flash")
-        loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
-        try:
-            reply_text = user_chats[m.chat.id].send_message(m.text).text
-            bot.edit_message_text(reply_text, chat_id=m.chat.id, message_id=loading_msg.message_id)
-        except Exception: bot.edit_message_text("❌ *AI sibuk!*", chat_id=m.chat.id, message_id=loading_msg.message_id)
-
-if __name__ == "__main__": 
-    bot.infinity_polling()
-      
+        loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdo
