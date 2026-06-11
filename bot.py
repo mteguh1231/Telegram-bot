@@ -22,7 +22,7 @@ try: import cv2; import numpy as np
 except ImportError: cv2 = None; np = None
 try: import qrcode
 except ImportError: qrcode = None
-try: import yt_dlp # Mesin Utama Baru Kita
+try: import yt_dlp 
 except ImportError: yt_dlp = None
 
 # --- Setup Konfigurasi Utama ---
@@ -102,7 +102,6 @@ def get_ai_response(chat_id, prompt):
             current_key_index += 1
             attempts += 1
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
-
 
 # ==========================================================================
 # MENU & HANDLERS
@@ -208,7 +207,7 @@ def handle_files(m):
             API_KEY = os.getenv('REMOVE_BG_KEY')
             if not API_KEY:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Variabel `REMOVE_BG_KEY` belum disetting di Variables Server!", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Variabel `REMOVE_BG_KEY` belum disetting di Server!", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
                 return
 
             file_path = bot.get_file(file_id).file_path
@@ -226,7 +225,7 @@ def handle_files(m):
                 bot.send_document(m.chat.id, out_io, visible_file_name="nobg_result.png", caption="✨ Selesai!")
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
-                bot.edit_message_text(f"❌ *Gagal:* Pastikan API Key valid atau kuota Remove.bg masih ada.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text(f"❌ *Gagal:* Pastikan API Key valid.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
         except Exception as e: 
             anim.stop()
             bot.edit_message_text(f"❌ Error: {str(e)}", m.chat.id, loading_msg.message_id)
@@ -280,10 +279,10 @@ def handle_text(m):
         except Exception as e: bot.reply_to(m, f"❌ *Error:* {str(e)}")
         return
 
-    # === MESIN DOWNLOADER YT-DLP BARU ===
+    # === MESIN DOWNLOADER YT-DLP + COOKIES ===
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         if yt_dlp is None:
-            bot.reply_to(m, "❌ *System Error:* Library `yt-dlp` belum terinstal! Tambahkan tulisan `yt-dlp` di file requirements.txt kamu.", parse_mode="Markdown")
+            bot.reply_to(m, "❌ *System Error:* Library `yt-dlp` belum terinstal!", parse_mode="Markdown")
             return
             
         loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
@@ -292,14 +291,14 @@ def handle_text(m):
         
         try:
             url = m.text.strip()
-            # Pembersih Link
             if url.startswith("Https://"): url = url.replace("Https://", "https://")
             elif url.startswith("Http://"): url = url.replace("Http://", "http://")
             if "?si=" in url: url = url.split("?si=")[0]
+            if "&si=" in url: url = url.split("&si=")[0]
             
             downloaded_file = None
 
-            # 1. TIKTOK (Tetap menggunakan TikWM karena anti-watermark)
+            # 1. TIKTOK (TikWM)
             if "tiktok.com" in url or "vt.tiktok" in url:
                 anim.update_text("Menyedot video TikTok")
                 res = requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json()
@@ -311,27 +310,31 @@ def handle_text(m):
                             for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
                     downloaded_file = temp_filename
 
-            # 2. YOUTUBE, INSTAGRAM, DLL (Mesin YT-DLP Murni)
+            # 2. YOUTUBE & INSTAGRAM (Memanfaatkan Cookies)
             else:
-                anim.update_text("Mengekstrak video (Mungkin butuh waktu)")
+                anim.update_text("Mengekstrak video menggunakan KTP rahasia")
                 
-                # Format 'best' = Ambil video kualitas mp4 tertinggi yang tidak dipisah audionya (maks 720p)
                 ydl_opts = {
                     'outtmpl': temp_filename,
                     'format': 'best', 
                     'quiet': True,
                     'no_warnings': True,
-                    'max_filesize': 50 * 1024 * 1024, # Batas 50MB agar tidak ditolak Telegram
+                    'max_filesize': 50 * 1024 * 1024, # Batas Telegram
                 }
                 
-                # Mesin langsung mengunduh dari server pusat, bukan ke API orang lain
+                # INI KUNCINYA: Memasukkan Cookies jika file-nya ada!
+                if os.path.exists('cookies.txt'):
+                    ydl_opts['cookiefile'] = 'cookies.txt'
+                else:
+                    logging.warning("⚠️ File cookies.txt tidak ditemukan di server!")
+
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
                 
                 if os.path.exists(temp_filename):
                     downloaded_file = temp_filename
 
-            # 3. KIRIM KE TELEGRAM
+            # --- KIRIM VIDEO KE TELEGRAM ---
             if downloaded_file:
                 anim.update_text("Mengirim video ke Telegram")
                 with open(downloaded_file, 'rb') as f:
@@ -341,12 +344,11 @@ def handle_text(m):
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Video tidak ditemukan, diprivate, atau ukurannya lebih dari 50MB.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Video tidak ditemukan, diprivate, atau melebihi 50MB.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
         except Exception as e: 
             anim.stop()
             bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail Error: {str(e)[:150]}...`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
-            # Bersihkan sampah jika gagal
             if os.path.exists(temp_filename):
                 try: os.remove(temp_filename)
                 except: pass
