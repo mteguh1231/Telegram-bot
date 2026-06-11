@@ -10,3 +10,4 @@ opencv-python-headless
 numpy
 qrcode
 openpyxl
+yt-dlp
