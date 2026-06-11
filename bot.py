@@ -160,6 +160,66 @@ def download_media_via_api(url):
             f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}",
             f"https://api.agatz.my.id/api/igdl?url={url}",
             f"https://api.vreden.my.id/api/igdownload?url={url}"
+def download_media_via_api(url):
+    # --- SISTEM PEMBERSIH LINK OTOMATIS ---
+    url = url.strip()
+    if url.startswith("Https://"): url = url.replace("Https://", "https://")
+    elif url.startswith("Http://"): url = url.replace("Http://", "http://")
+    
+    if "?si=" in url: url = url.split("?si=")[0]
+    if "&si=" in url: url = url.split("&si=")[0]
+    if "instagram.com" in url and "?" in url: url = url.split("?")[0]
+    if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
+    
+    if "youtube.com" in url or "youtu.be" in url:
+        vid_id = None
+        if "youtu.be/" in url: vid_id = url.split("youtu.be/")[1].split("?")[0]
+        elif "youtube.com/shorts/" in url: vid_id = url.split("youtube.com/shorts/")[1].split("?")[0]
+        elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
+        if vid_id: url = f"https://youtu.be/{vid_id}"
+
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0"}
+
+    # 1. Khusus TikTok (TikWM - Terbukti Stabil)
+    if "tiktok.com" in url or "vt.tiktok" in url:
+        try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers=headers, timeout=10).json().get('data', {}).get('play')
+        except: pass
+
+    # --- FUNGSI PELACAK LINK MP4 CERDAS ---
+    def extract_vid_url(data):
+        if isinstance(data, dict):
+            for key in ['url', 'dl', 'link', 'video', 'media', 'play', 'mp4']:
+                if key in data and isinstance(data[key], str) and data[key].startswith('http') and not data[key].endswith('.jpg'):
+                    return data[key]
+            for k, v in data.items():
+                res = extract_vid_url(v)
+                if res: return res
+        elif isinstance(data, list) and len(data) > 0:
+            return extract_vid_url(data[0])
+        return None
+
+    # 2. Khusus YouTube (Mode Serbu 4 API Tangguh)
+    if "youtu.be" in url or "youtube.com" in url:
+        yt_apis = [
+            f"https://widipe.com/download/ytdl?url={url}",       # API Utama 1
+            f"https://api.btch.info/download/ytdl?url={url}",    # API Utama 2
+            f"https://api.siputzx.my.id/api/d/ytmp4?url={url}",  # Cadangan 1
+            f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}" # Cadangan 2
+        ]
+        for api_url in yt_apis:
+            try:
+                res = requests.get(api_url, headers=headers, timeout=10).json()
+                vid_link = extract_vid_url(res)
+                if vid_link: return vid_link
+            except: continue
+
+    # 3. Khusus Instagram (Mode Serbu 4 API Tangguh)
+    if "instagram.com" in url:
+        ig_apis = [
+            f"https://widipe.com/download/igdl?url={url}",       # API Utama 1
+            f"https://api.btch.info/download/igdl?url={url}",    # API Utama 2
+            f"https://api.siputzx.my.id/api/d/igdl?url={url}",   # Cadangan 1
+            f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}"  # Cadangan 2
         ]
         for api_url in ig_apis:
             try:
@@ -168,16 +228,25 @@ def download_media_via_api(url):
                 if vid_link: return vid_link
             except: continue
 
-    # 4. Sapu Jagat (Cobalt API v10 Terbaru)
-    try:
-        cobalt_headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        res = requests.post("https://api.cobalt.tools/", json={"url": url}, headers=cobalt_headers, timeout=15)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("url"): return data.get("url")
-    except: pass
+    # 4. Sapu Jagat Terakhir (Jaringan Cobalt Server Komunitas)
+    cobalt_instances = [
+        "https://cobalt.q-n.space/api/json",
+        "https://co.wuk.sh/api/json",
+        "https://api.cobalt.tools/"
+    ]
+    for cob in cobalt_instances:
+        try:
+            cobalt_headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": headers["User-Agent"]}
+            res = requests.post(cob, json={"url": url}, headers=cobalt_headers, timeout=15)
+            if res.status_code in [200, 201]:
+                data = res.json()
+                if data.get("status") in ["stream", "redirect"]: return data.get("url")
+                elif data.get("status") == "picker": return data["picker"][0]["url"]
+                elif data.get("url"): return data.get("url")
+        except: continue
     
     return None
+    
     
 
 # ==========================================================================
