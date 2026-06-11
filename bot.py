@@ -33,9 +33,21 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
-# ==========================================
+# ==========================================================================
+# CONFIGURATION: DAFTAR MODEL AI GROQ (Ubah di sini jika Groq update lagi)
+# ==========================================================================
+TEXT_MODEL = "llama-3.3-70b-versatile"
+
+# Sistem akan mencoba model-model ini berurutan sampai menemukan yang aktif di Groq
+VISION_MODELS_FALLBACK = [
+    "llama-3.2-11b-vision-instruct",
+    "llama-3.2-11b-vision",
+    "llama-3.2-90b-vision",
+    "llama-3.2-90b-vision-instruct"
+]
+# ==========================================================================
+
 # VARIABEL UNTUK MEMORI PERCAKAPAN
-# ==========================================
 chat_history = {} # Menyimpan riwayat chat berdasarkan ID User
 
 # Rotasi Key
@@ -62,22 +74,42 @@ def get_ai_response(chat_id, prompt, img_pil=None):
             temp_client = Groq(api_key=active_key)
             
             if img_pil:
-                # Mode Vision (Foto) -> DIPERBARUI KE MODEL PRODUKSI YANG STABIL
+                # Mode Vision (Foto) dengan Sistem Auto-Fallback Anti-Error
                 buffered = io.BytesIO()
                 img_pil.save(buffered, format="JPEG")
                 img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 
-                response = temp_client.chat.completions.create(
-                    model="llama-3.2-11b-vision-instruct",  # <-- Menggunakan versi produksi resmi (bukan preview lagi)
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
-                        ]
-                    }]
-                )
-                return response.choices[0].message.content
+                response = None
+                last_vision_error = None
+                
+                # Melakukan perulangan untuk mencari nama model vision yang sedang aktif
+                for model_name in VISION_MODELS_FALLBACK:
+                    try:
+                        response = temp_client.chat.completions.create(
+                            model=model_name,
+                            messages=[{
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
+                                ]
+                            }]
+                        )
+                        # Jika berhasil dapat respon, langsung return hasilnya
+                        return response.choices[0].message.content
+                    except Exception as ve:
+                        last_vision_error = ve
+                        err_msg = str(ve).lower()
+                        # Jika error disebabkan karena model tidak ditemukan/decommissioned, lanjut uji nama berikutnya
+                        if "model_not_found" in err_msg or "decommissioned" in err_msg or "404" in err_msg or "400" in err_msg:
+                            logging.warning(f"Model {model_name} tidak merespon/tidak ada. Mencoba model alternatif...")
+                            continue
+                        else:
+                            # Jika error karena masalah key/limit, lempar keluar untuk ganti API Key
+                            raise ve
+                
+                # Jika semua list model vision di atas dicoba dan tetap gagal total
+                raise last_vision_error
                 
             else:
                 # Mode Chat Teks (Menggunakan Memori)
@@ -92,7 +124,7 @@ def get_ai_response(chat_id, prompt, img_pil=None):
                     chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-10:]
                 
                 response = temp_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model=TEXT_MODEL,
                     messages=chat_history[chat_id]
                 )
                 
