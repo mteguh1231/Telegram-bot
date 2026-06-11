@@ -22,6 +22,8 @@ try: import cv2; import numpy as np
 except ImportError: cv2 = None; np = None
 try: import qrcode
 except ImportError: qrcode = None
+try: import yt_dlp # Mesin Utama Baru Kita
+except ImportError: yt_dlp = None
 
 # --- Setup Konfigurasi Utama ---
 logging.basicConfig(level=logging.INFO)
@@ -101,102 +103,6 @@ def get_ai_response(chat_id, prompt):
             attempts += 1
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
-# ==========================================================================
-# DOWNLOADER SUPER COBALT v10 & MULTI-API
-# ==========================================================================
-def download_media_via_api(url):
-    url = url.strip()
-    if url.startswith("Https://"): url = url.replace("Https://", "https://")
-    elif url.startswith("Http://"): url = url.replace("Http://", "http://")
-    
-    if "?si=" in url: url = url.split("?si=")[0]
-    if "&si=" in url: url = url.split("&si=")[0]
-    if "instagram.com" in url and "?" in url: url = url.split("?")[0]
-    if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
-    
-    if "youtube.com" in url or "youtu.be" in url:
-        vid_id = None
-        if "youtu.be/" in url: vid_id = url.split("youtu.be/")[1].split("?")[0]
-        elif "youtube.com/shorts/" in url: vid_id = url.split("youtube.com/shorts/")[1].split("?")[0]
-        elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
-        if vid_id: url = f"https://youtu.be/{vid_id}"
-
-    # 1. TIKTOK (TikWM)
-    if "tiktok.com" in url or "vt.tiktok" in url:
-        try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json().get('data', {}).get('play')
-        except: pass
-
-    def extract_link(data):
-        if isinstance(data, dict):
-            for key in ['url', 'dl', 'link', 'video', 'download', 'play', 'media']:
-                val = data.get(key)
-                if isinstance(val, str) and val.startswith('http') and not val.endswith('.jpg'):
-                    return val
-                if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict):
-                    if 'url' in val[0] and isinstance(val[0]['url'], str) and val[0]['url'].startswith('http'):
-                        return val[0]['url']
-            for k, v in data.items():
-                res = extract_link(v)
-                if res: return res
-        elif isinstance(data, list) and len(data) > 0:
-            return extract_link(data[0])
-        return None
-
-    # 2. JALUR API LOKAL (Penahan Pertama)
-    if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url:
-        public_apis = [
-            f"https://api.siputzx.my.id/api/d/igdl?url={url}" if "instagram" in url else f"https://api.siputzx.my.id/api/d/ytmp4?url={url}",
-            f"https://api.ryzendesu.vip/api/downloader/igdl?url={url}" if "instagram" in url else f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={url}",
-            f"https://api.vreden.my.id/api/igdownload?url={url}" if "instagram" in url else f"https://api.vreden.my.id/api/ytmp4?url={url}",
-            f"https://widipe.com/download/igdl?url={url}" if "instagram" in url else f"https://widipe.com/download/ytdl?url={url}"
-        ]
-        for api_url in public_apis:
-            try:
-                r = requests.get(api_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json()
-                media_link = extract_link(r)
-                if media_link: return media_link
-            except:
-                continue
-
-    # 3. PASUKAN COBALT v10 (UPDATE TERBARU TANPA /api/json)
-    if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url:
-        cobalt_servers = [
-            "https://api.cobalt.tools",
-            "https://co.wuk.sh",
-            "https://cobalt.catterall.sh",
-            "https://cobalt.q-n.space",
-            "https://cobalt.tcr.gg",
-            "https://dl.khub.win",
-            "https://cobalt.zackmyers.io"
-        ]
-        
-        cobalt_headers = {
-            "Accept": "application/json", 
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-
-        for server in cobalt_servers:
-            try:
-                # Tembakan v10
-                res = requests.post(f"{server}/", json={"url": url}, headers=cobalt_headers, timeout=12)
-                if res.status_code in [200, 201]:
-                    data = res.json()
-                    if data.get("status") in ["stream", "redirect", "success"]: return data.get("url")
-                    elif data.get("status") == "picker": return data["picker"][0]["url"]
-                    elif data.get("url"): return data.get("url")
-                
-                # Tembakan v9 Cadangan
-                res2 = requests.post(f"{server}/api/json", json={"url": url}, headers=cobalt_headers, timeout=12)
-                if res2.status_code in [200, 201]:
-                    data2 = res2.json()
-                    if data2.get("status") in ["stream", "redirect"]: return data2.get("url")
-                    elif data2.get("status") == "picker": return data2["picker"][0]["url"]
-                    elif data2.get("url"): return data2.get("url")
-            except:
-                continue 
-
-    return None
 
 # ==========================================================================
 # MENU & HANDLERS
@@ -374,57 +280,94 @@ def handle_text(m):
         except Exception as e: bot.reply_to(m, f"❌ *Error:* {str(e)}")
         return
 
+    # === MESIN DOWNLOADER YT-DLP BARU ===
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
-        loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
-        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menyisir jaringan server")
-        try:
-            video_link = download_media_via_api(m.text)
+        if yt_dlp is None:
+            bot.reply_to(m, "❌ *System Error:* Library `yt-dlp` belum terinstal! Tambahkan tulisan `yt-dlp` di file requirements.txt kamu.", parse_mode="Markdown")
+            return
             
-            if video_link:
+        loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menyiapkan mesin pengunduh")
+        temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
+        
+        try:
+            url = m.text.strip()
+            # Pembersih Link
+            if url.startswith("Https://"): url = url.replace("Https://", "https://")
+            elif url.startswith("Http://"): url = url.replace("Http://", "http://")
+            if "?si=" in url: url = url.split("?si=")[0]
+            
+            downloaded_file = None
+
+            # 1. TIKTOK (Tetap menggunakan TikWM karena anti-watermark)
+            if "tiktok.com" in url or "vt.tiktok" in url:
+                anim.update_text("Menyedot video TikTok")
+                res = requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json()
+                video_link = res.get('data', {}).get('play')
+                if video_link:
+                    with requests.get(video_link, stream=True, timeout=30) as r:
+                        r.raise_for_status()
+                        with open(temp_filename, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
+                    downloaded_file = temp_filename
+
+            # 2. YOUTUBE, INSTAGRAM, DLL (Mesin YT-DLP Murni)
+            else:
+                anim.update_text("Mengekstrak video (Mungkin butuh waktu)")
+                
+                # Format 'best' = Ambil video kualitas mp4 tertinggi yang tidak dipisah audionya (maks 720p)
+                ydl_opts = {
+                    'outtmpl': temp_filename,
+                    'format': 'best', 
+                    'quiet': True,
+                    'no_warnings': True,
+                    'max_filesize': 50 * 1024 * 1024, # Batas 50MB agar tidak ditolak Telegram
+                }
+                
+                # Mesin langsung mengunduh dari server pusat, bukan ke API orang lain
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                
+                if os.path.exists(temp_filename):
+                    downloaded_file = temp_filename
+
+            # 3. KIRIM KE TELEGRAM
+            if downloaded_file:
                 anim.update_text("Mengirim video ke Telegram")
-                
-                temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
-                with requests.get(video_link, stream=True, timeout=30) as r:
-                    r.raise_for_status()
-                    with open(temp_filename, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
-                
-                with open(temp_filename, 'rb') as f:
+                with open(downloaded_file, 'rb') as f:
                     bot.send_video(m.chat.id, f, caption="✨ *Selesai!*", parse_mode="Markdown", timeout=120)
-                
-                os.remove(temp_filename)
+                os.remove(downloaded_file)
                 anim.stop() 
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Semua server sedang sibuk atau video diprivate.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
-            
+                bot.edit_message_text("❌ *Gagal:* Video tidak ditemukan, diprivate, atau ukurannya lebih dari 50MB.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+
         except Exception as e: 
             anim.stop()
-            logging.error(f"Gagal download: {str(e)}")
-            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: Coba ulangi beberapa saat lagi.`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
-            for file in os.listdir('.'):
-                if file.startswith(f"vid_{m.chat.id}"):
-                    try: os.remove(file)
-                    except: pass
+            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail Error: {str(e)[:150]}...`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            # Bersihkan sampah jika gagal
+            if os.path.exists(temp_filename):
+                try: os.remove(temp_filename)
+                except: pass
         return
 
+    # === BAGIAN AI CHAT ===
     elif state == "chat":
         loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
         anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Mengetik balasan")
         try:
             reply_text = get_ai_response(m.chat.id, m.text)
             anim.stop()
-            
             try:
                 bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             except Exception as e:
                 logging.error(f"Telegram menolak Markdown: {e}")
                 bot.edit_message_text(reply_text, m.chat.id, loading_msg.message_id)
-                
         except Exception as e: 
             anim.stop()
             bot.edit_message_text(f"❌ *Sistem AI Error:* {str(e)[:100]}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
 
 if __name__ == "__main__": 
     bot.infinity_polling()
+    
