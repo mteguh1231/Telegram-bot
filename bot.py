@@ -5,6 +5,7 @@ import logging
 import requests
 import zipfile
 import threading
+import re # Library Pelacak Teks (Untuk Bypass Web)
 
 import telebot
 from telebot import types
@@ -37,7 +38,7 @@ chat_history = {}
 current_key_index = 0
 
 # ==========================================================================
-# FUNGSI ANIMASI LOADING BERGERAK (THREADING)
+# FUNGSI ANIMASI LOADING BERGERAK
 # ==========================================================================
 class LoadingAnim:
     def __init__(self, chat_id, message_id, text="Memproses"):
@@ -68,7 +69,7 @@ class LoadingAnim:
         self.running = False
 
 # ==========================================================================
-# FUNGSI AI CHAT & DOWNLOADER MULTI-API TAHAN BANTING
+# FUNGSI AI CHAT
 # ==========================================================================
 def get_ai_response(chat_id, prompt):
     global current_key_index, chat_history
@@ -99,8 +100,10 @@ def get_ai_response(chat_id, prompt):
             attempts += 1
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
+# ==========================================================================
+# DOWNLOADER SUPER BYPASS (TANPA API PIHAK KETIGA)
+# ==========================================================================
 def download_media_via_api(url):
-    # --- SISTEM PEMBERSIH LINK OTOMATIS ---
     url = url.strip()
     if url.startswith("Https://"): url = url.replace("Https://", "https://")
     elif url.startswith("Http://"): url = url.replace("Http://", "http://")
@@ -109,66 +112,75 @@ def download_media_via_api(url):
     if "&si=" in url: url = url.split("&si=")[0]
     if "instagram.com" in url and "?" in url: url = url.split("?")[0]
     if "tiktok.com" in url and "?" in url: url = url.split("?")[0]
+    
+    if "youtube.com" in url or "youtu.be" in url:
+        vid_id = None
+        if "youtu.be/" in url: vid_id = url.split("youtu.be/")[1].split("?")[0]
+        elif "youtube.com/shorts/" in url: vid_id = url.split("youtube.com/shorts/")[1].split("?")[0]
+        elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
+        if vid_id: url = f"https://youtu.be/{vid_id}"
 
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0"}
 
-    # 1. Khusus TikTok (Menggunakan TikWM)
+    # 1. TIKTOK (Tetap pakai TikWM karena sudah terbukti ampuh)
     if "tiktok.com" in url or "vt.tiktok" in url:
         try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers=headers, timeout=10).json().get('data', {}).get('play')
         except: pass
 
-    # --- FUNGSI EKSTRAKSI LINK INTERNASIONAL ---
-    def extract_link(data):
-        if isinstance(data, dict):
-            for key in ['url', 'dl', 'link', 'video', 'download', 'play', 'data']:
-                if key in data and isinstance(data[key], str) and data[key].startswith('http'):
-                    return data[key]
-            for k, v in data.items():
-                res = extract_link(v)
-                if res: return res
-        elif isinstance(data, list) and len(data) > 0:
-            return extract_link(data[0])
-        return None
-
-    # 2. Jalur Alternatif Kuat untuk YouTube & Instagram (Menggunakan API Publik Global Berbeda)
-    if "youtube.com" in url or "youtu.be" in url or "instagram.com" in url:
-        # Kita tembak ke API khusus bypass data center yang menggunakan server proxy terdistribusi
-        endpoints = [
-            f"https://api.alyapi.biz.id/api/downloader/aio?url={url}",
-            f"https://api.sandipbaruwal.com/aio/download?url={url}",
-            f"https://skizoasia.xyz/api/aio?url={url}",
-            f"https://api.botcahx.eu.org/api/download/aio?url={url}"
-        ]
+    # 2. INSTAGRAM DIRECT SCRAPER (Menyamar sebagai SaveInsta)
+    if "instagram.com" in url:
+        try:
+            head_ig = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": "https://saveig.app",
+                "Referer": "https://saveig.app/en"
+            }
+            # Menembak langsung ke server pemroses SaveInsta
+            res = requests.post("https://saveig.app/api/ajaxSearch", data={"q": url, "t": "media", "lang": "en"}, headers=head_ig, timeout=10)
+            
+            # Sedot link MP4 dari kode HTML berantakan menggunakan Regex
+            links = re.findall(r'href=\\"(https?://[^"]*?\.mp4[^"]*?)\\"', res.text) or re.findall(r'href="(https?://[^"]*?\.mp4[^"]*?)"', res.text)
+            if links: 
+                return links[0].replace("\\/", "/").replace("amp;", "")
+        except: pass
         
-        for endpoint in endpoints:
-            try:
-                res = requests.get(endpoint, headers=headers, timeout=12).json()
-                media_url = extract_link(res)
-                if media_url: return media_url
-            except:
-                continue
+        # Cadangan Scraper Instagram (SnapInsta Bypass)
+        try:
+            res2 = requests.post("https://snapinsta.app/action2.php", data={"url": url, "action": "post"}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            links2 = re.findall(r'href="(https?://[^"]*?\.mp4[^"]*?)"', res2.text)
+            if links2: return links2[0].replace("amp;", "")
+        except: pass
 
-    # 3. Benteng Terakhir (Cobalt Cluster)
+    # 3. YOUTUBE & INSTAGRAM CADANGAN (Komunitas Bebas Blokir)
+    # Ini menumpang ke 5 server mandiri di berbagai negara yang kebal aturan blokir
     cobalt_nodes = [
         "https://co.wuk.sh/api/json",
         "https://cobalt.q-n.space/api/json",
-        "https://api.cobalt.tools/api/json"
+        "https://api.cobalt.tools/api/json",
+        "https://api.siputzx.my.id/api/d/ytmp4?url=" + url if "youtu" in url else "https://api.siputzx.my.id/api/d/igdl?url=" + url
     ]
+    
     for node in cobalt_nodes:
         try:
-            res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": headers["User-Agent"]}, timeout=12)
-            if res.status_code in [200, 201]:
-                d = res.json()
-                if d.get("status") in ["stream", "redirect"]: return d.get("url")
-                elif d.get("status") == "picker": return d["picker"][0]["url"]
-                elif d.get("url"): return d.get("url")
-        except:
-            continue
+            if "siputzx" in node:
+                res = requests.get(node, headers=headers, timeout=10).json()
+                data_obj = res.get('data')
+                if isinstance(data_obj, dict) and data_obj.get('dl'): return data_obj['dl']
+                elif isinstance(data_obj, list) and len(data_obj) > 0: return data_obj[0].get('url')
+            else:
+                res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=12)
+                if res.status_code in [200, 201]:
+                    d = res.json()
+                    if d.get("status") in ["stream", "redirect"]: return d.get("url")
+                    elif d.get("status") == "picker": return d["picker"][0]["url"]
+                    elif d.get("url"): return d.get("url")
+        except: continue
             
     return None
 
 # ==========================================================================
-# MENU & HANDLERS
+# MENU & HANDLERS (SAMA SEPERTI SEBELUMNYA)
 # ==========================================================================
 def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di bawah ini:"):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -345,7 +357,7 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
-        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Membongkar link dari server")
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Membongkar data dari server")
         try:
             video_link = download_media_via_api(m.text)
             
@@ -366,12 +378,12 @@ def handle_text(m):
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Sistem API tertahan oleh hak cipta / link tidak valid.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Sistem tertahan oleh proteksi keamanan / link tidak valid.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             anim.stop()
             logging.error(f"Gagal download API: {str(e)}")
-            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: {str(e)[:150]}...`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: Coba ulangi beberapa saat lagi.`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             for file in os.listdir('.'):
                 if file.startswith(f"vid_{m.chat.id}"):
                     try: os.remove(file)
