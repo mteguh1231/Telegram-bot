@@ -335,7 +335,7 @@ def handle_text(m):
         loading_msg = bot.reply_to(m, "⏳ *Memproses video... Mohon tunggu.*", parse_mode="Markdown")
         out_filename = f"media_{m.chat.id}.mp4"
         try:
-                        # OPTIMASI ANTI-BOT & FORMAT FLEKSIBEL
+            # OPTIMASI ANTI-BOT & FORMAT FLEKSIBEL
             ydl_opts = {
                 # Dibuat lebih longgar: cari mp4 terbaik (single file), kalau tidak ada ambil format tunggal apa saja
                 'format': 'b[ext=mp4]/b',
@@ -344,8 +344,6 @@ def handle_text(m):
                 'quiet': True,
                 'geo_bypass': True, 
                 'nocheckcertificate': True,
-            }
-            
             }
             
             # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile & Web
@@ -383,7 +381,7 @@ def handle_text(m):
             if "filesize" in error_msg or "too large" in error_msg:
                 teks_gagal = "❌ *Gagal mengunduh!*\nUkuran video terlalu besar (melebihi batas 50MB dari Telegram)."
             elif "sign in" in error_msg or "bot" in error_msg:
-                teks_gagal = "❌ *Gagal mengunduh!*\nYouTube memblokir akses server bot. Coba gunakan link lain."
+                teks_gagal = "❌ *Gagal mengunduh!*\nYouTube memblokir akses server bot. Pastikan cookies.txt sudah dimasukkan."
             else:
                 teks_gagal = f"❌ *Gagal mengunduh!*\nLink mungkin diproteksi (Private) atau server diblokir.\n\n`Detail: {str(e)[:100]}...`"
                 
@@ -402,4 +400,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-                
+        
