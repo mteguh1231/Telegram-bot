@@ -18,7 +18,8 @@ def install_library(package_name):
         except Exception as e:
             logging.error(f"Gagal menginstal {package_name}: {str(e)}")
 
-new_packages = ["rembg", "qrcode", "opencv-python", "numpy"]
+new_packages = ["rembg", "onnxruntime", "qrcode", "opencv-python", "numpy"]
+
 for package in new_packages:
     if package == "opencv-python":
         install_library("cv2")
