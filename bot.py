@@ -5,14 +5,14 @@ import logging
 import requests
 import zipfile
 import threading
-import re # Library Pelacak Teks (Untuk Bypass Web)
+import re
 
 import telebot
 from telebot import types
 from PIL import Image
 from groq import Groq
 
-# --- Pengaman Import Library ---
+# --- Pengaman Import Library Opsional ---
 try: from pdf2docx import Converter
 except ImportError: Converter = None
 try: import fitz
@@ -38,7 +38,7 @@ chat_history = {}
 current_key_index = 0
 
 # ==========================================================================
-# FUNGSI ANIMASI LOADING BERGERAK
+# FUNGSI ANIMASI LOADING BERGERAK (VERSI ANTI-LIMIT TELEGRAM)
 # ==========================================================================
 class LoadingAnim:
     def __init__(self, chat_id, message_id, text="Memproses"):
@@ -51,25 +51,32 @@ class LoadingAnim:
         self.thread.start()
 
     def _animate(self):
-        frames = ["⏳", "⌛", "🔄", "🔃"]
+        frames = ["⏳", "⌛", "🔄", "🔃", "🚀"]
         idx = 0
         while self.running:
             try:
                 frame = frames[idx % len(frames)]
+                # Jeda aman Telegram adalah 2 detik per edit pesan agar tidak error 429
                 bot.edit_message_text(f"{frame} *{self.text}...*", self.chat_id, self.message_id, parse_mode="Markdown")
                 idx += 1
             except: 
-                pass 
+                pass # Abaikan jika Telegram menolak edit karena teks sama
             
-            for _ in range(15): 
+            # Waktu tunggu dipecah kecil agar bisa di-Stop kapan saja secara instan
+            for _ in range(20): 
                 if not self.running: break
                 time.sleep(0.1)
+
+    def update_text(self, new_text):
+        """Fungsi untuk mengubah teks milestone saat loading berjalan"""
+        self.text = new_text
 
     def stop(self):
         self.running = False
 
+
 # ==========================================================================
-# FUNGSI AI CHAT
+# FUNGSI AI CHAT & DOWNLOADER VIP APIFY
 # ==========================================================================
 def get_ai_response(chat_id, prompt):
     global current_key_index, chat_history
@@ -100,10 +107,8 @@ def get_ai_response(chat_id, prompt):
             attempts += 1
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
 
-# ==========================================================================
-# DOWNLOADER SUPER BYPASS (TANPA API PIHAK KETIGA)
-# ==========================================================================
 def download_media_via_api(url):
+    # --- SISTEM PEMBERSIH LINK OTOMATIS ---
     url = url.strip()
     if url.startswith("Https://"): url = url.replace("Https://", "https://")
     elif url.startswith("Http://"): url = url.replace("Http://", "http://")
@@ -120,67 +125,50 @@ def download_media_via_api(url):
         elif "youtube.com/watch?v=" in url: vid_id = url.split("youtube.com/watch?v=")[1].split("&")[0]
         if vid_id: url = f"https://youtu.be/{vid_id}"
 
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0"}
-
-    # 1. TIKTOK (Tetap pakai TikWM karena sudah terbukti ampuh)
+    # 1. TIKTOK (Menggunakan TikWM)
     if "tiktok.com" in url or "vt.tiktok" in url:
-        try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers=headers, timeout=10).json().get('data', {}).get('play')
+        try: return requests.get(f"https://www.tikwm.com/api/?url={url}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10).json().get('data', {}).get('play')
         except: pass
 
-    # 2. INSTAGRAM DIRECT SCRAPER (Menyamar sebagai SaveInsta)
-    if "instagram.com" in url:
+    # 2. JALUR VIP APIFY (Untuk Instagram & YouTube)
+    APIFY_TOKEN = os.getenv('APIFY_TOKEN')
+    if APIFY_TOKEN and ("instagram.com" in url or "youtu.be" in url or "youtube.com" in url):
         try:
-            head_ig = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Origin": "https://saveig.app",
-                "Referer": "https://saveig.app/en"
-            }
-            # Menembak langsung ke server pemroses SaveInsta
-            res = requests.post("https://saveig.app/api/ajaxSearch", data={"q": url, "t": "media", "lang": "en"}, headers=head_ig, timeout=10)
+            ACTOR_ID = "hVlkT1FrZB15YsUDo" 
+            apify_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?token={APIFY_TOKEN}"
+            payload = {"url": url, "urls": [url], "directUrls": [url], "downloadVideo": True}
             
-            # Sedot link MP4 dari kode HTML berantakan menggunakan Regex
-            links = re.findall(r'href=\\"(https?://[^"]*?\.mp4[^"]*?)\\"', res.text) or re.findall(r'href="(https?://[^"]*?\.mp4[^"]*?)"', res.text)
-            if links: 
-                return links[0].replace("\\/", "/").replace("amp;", "")
-        except: pass
-        
-        # Cadangan Scraper Instagram (SnapInsta Bypass)
-        try:
-            res2 = requests.post("https://snapinsta.app/action2.php", data={"url": url, "action": "post"}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-            links2 = re.findall(r'href="(https?://[^"]*?\.mp4[^"]*?)"', res2.text)
-            if links2: return links2[0].replace("amp;", "")
-        except: pass
+            res = requests.post(apify_url, json=payload, timeout=60) 
+            if res.status_code in [200, 201]:
+                data = res.json()
+                if isinstance(data, list) and len(data) > 0:
+                    item = data[0]
+                    for key in ['videoUrl', 'video_url', 'url', 'displayUrl', 'media_url']:
+                        if key in item and isinstance(item[key], str) and ('mp4' in item[key] or 'video' in item[key]):
+                            return item[key]
+        except Exception as e:
+            logging.error(f"[Apify Error]: {e}")
 
-    # 3. YOUTUBE & INSTAGRAM CADANGAN (Komunitas Bebas Blokir)
-    # Ini menumpang ke 5 server mandiri di berbagai negara yang kebal aturan blokir
+    # 3. BENTENG CADANGAN TERAKHIR (Cobalt Server Komunitas)
     cobalt_nodes = [
         "https://co.wuk.sh/api/json",
         "https://cobalt.q-n.space/api/json",
-        "https://api.cobalt.tools/api/json",
-        "https://api.siputzx.my.id/api/d/ytmp4?url=" + url if "youtu" in url else "https://api.siputzx.my.id/api/d/igdl?url=" + url
+        "https://api.cobalt.tools/api/json"
     ]
-    
     for node in cobalt_nodes:
         try:
-            if "siputzx" in node:
-                res = requests.get(node, headers=headers, timeout=10).json()
-                data_obj = res.get('data')
-                if isinstance(data_obj, dict) and data_obj.get('dl'): return data_obj['dl']
-                elif isinstance(data_obj, list) and len(data_obj) > 0: return data_obj[0].get('url')
-            else:
-                res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=12)
-                if res.status_code in [200, 201]:
-                    d = res.json()
-                    if d.get("status") in ["stream", "redirect"]: return d.get("url")
-                    elif d.get("status") == "picker": return d["picker"][0]["url"]
-                    elif d.get("url"): return d.get("url")
+            res = requests.post(node, json={"url": url}, headers={"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=12)
+            if res.status_code in [200, 201]:
+                d = res.json()
+                if d.get("status") in ["stream", "redirect"]: return d.get("url")
+                elif d.get("status") == "picker": return d["picker"][0]["url"]
+                elif d.get("url"): return d.get("url")
         except: continue
             
     return None
 
 # ==========================================================================
-# MENU & HANDLERS (SAMA SEPERTI SEBELUMNYA)
+# MENU & HANDLERS
 # ==========================================================================
 def send_main_menu(chat_id, text="🤖 *Bot Utama Siap!*\nSilakan pilih menu di bawah ini:"):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -357,12 +345,14 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Menerima link...*", parse_mode="Markdown")
-        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Membongkar data dari server")
+        # Animasi dimulai dengan status pertama
+        anim = LoadingAnim(m.chat.id, loading_msg.message_id, "Menghubungi Server Apify")
         try:
             video_link = download_media_via_api(m.text)
             
             if video_link:
-                anim.text = "Mengirim video ke Telegram"
+                # Mengubah teks animasi (Pasti akan terlihat jika file besar)
+                anim.update_text("Menyedot video ke Telegram")
                 
                 temp_filename = f"vid_{m.chat.id}_{int(time.time())}.mp4"
                 with requests.get(video_link, stream=True, timeout=30) as r:
@@ -378,11 +368,11 @@ def handle_text(m):
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
                 anim.stop()
-                bot.edit_message_text("❌ *Gagal:* Sistem tertahan oleh proteksi keamanan / link tidak valid.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* Pastikan Token Apify benar atau link video tidak diprivate.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             anim.stop()
-            logging.error(f"Gagal download API: {str(e)}")
+            logging.error(f"Gagal download: {str(e)}")
             bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: Coba ulangi beberapa saat lagi.`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             for file in os.listdir('.'):
                 if file.startswith(f"vid_{m.chat.id}"):
@@ -403,4 +393,4 @@ def handle_text(m):
 
 if __name__ == "__main__": 
     bot.infinity_polling()
-    
+        
