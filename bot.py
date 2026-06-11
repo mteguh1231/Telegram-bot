@@ -335,16 +335,18 @@ def handle_text(m):
         loading_msg = bot.reply_to(m, "⏳ *Memproses video... Mohon tunggu.*", parse_mode="Markdown")
         out_filename = f"media_{m.chat.id}.mp4"
         try:
-            # OPTIMASI ANTI-BOT & FORMAT FLEKSIBEL
+                        # OPTIMASI FORMAT FLEKSIBEL (MEMBUTUHKAN FFMPEG)
             ydl_opts = {
-                # Dibuat lebih longgar: cari mp4 terbaik (single file), kalau tidak ada ambil format tunggal apa saja
-                'format': 'b[ext=mp4]/b',
+                # Prioritas 1: Gabungkan video & audio terbaik. Prioritas 2: Ambil video gabungan apa pun yg tersedia
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best/b',
                 'outtmpl': out_filename,
+                'merge_output_format': 'mp4', # Paksa hasil akhir berformat mp4
                 'no_warnings': True,
                 'quiet': True,
                 'geo_bypass': True, 
                 'nocheckcertificate': True,
             }
+            
             
             # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile & Web
             if "youtube.com" in m.text or "youtu.be" in m.text or "yt.be" in m.text:
