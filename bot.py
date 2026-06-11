@@ -335,15 +335,17 @@ def handle_text(m):
         loading_msg = bot.reply_to(m, "⏳ *Memproses video... Mohon tunggu.*", parse_mode="Markdown")
         out_filename = f"media_{m.chat.id}.mp4"
         try:
-            # OPTIMASI ANTI-BOT & LIMIT TELEGRAM (50MB) UNTUK YT-DLP
+                        # OPTIMASI ANTI-BOT & FORMAT FLEKSIBEL
             ydl_opts = {
-                # Mengutamakan format mp4 single-file (tanpa perlu ffmpeg) di bawah 50MB
-                'format': 'best[ext=mp4][filesize<=45M]/best[filesize<=45M]/best',
+                # Dibuat lebih longgar: cari mp4 terbaik (single file), kalau tidak ada ambil format tunggal apa saja
+                'format': 'b[ext=mp4]/b',
                 'outtmpl': out_filename,
                 'no_warnings': True,
                 'quiet': True,
                 'geo_bypass': True, 
                 'nocheckcertificate': True,
+            }
+            
             }
             
             # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile & Web
