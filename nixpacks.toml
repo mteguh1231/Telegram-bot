@@ -1,3 +1,0 @@
-[phases.setup]
-aptPkgs = ["libreoffice", "ffmpeg"]
-
