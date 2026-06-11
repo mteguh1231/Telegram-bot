@@ -5,11 +5,12 @@ import logging
 import subprocess
 import sys
 import zipfile
+import base64
 
 import telebot
 from telebot import types
 from PIL import Image
-from google import genai
+from groq import Groq
 from yt_dlp import YoutubeDL
 
 # --- Pengaman Import Library Lama ---
@@ -55,56 +56,76 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 # ==========================================
-# ROTASI API KEY GEMINI VIA RAILWAY VARIABLES
+# ROTASI API KEY GROQ (BISA 4 KEY ATAU LEBIH)
 # ==========================================
 current_key_index = 0
 
 def get_ai_response(prompt, img_pil=None):
     global current_key_index
     
-    # Toleransi pembacaan: Bisa GEMINI_KEYS (jamak) atau GEMINI_KEY (tunggal)
-    raw_keys = os.getenv('GEMINI_KEYS') or os.getenv('GEMINI_KEY', '')
+    # Membaca variabel dari Railway (mendukung nama GROQ_KEYS atau GROQ_KEY)
+    raw_keys = os.getenv('GROQ_KEYS') or os.getenv('GROQ_KEY', '')
     
-    # Membersihkan spasi, enter, dan tanda kutip yang tidak sengaja terinput di Railway
+    # Otomatis membersihkan spasi/tanda kutip jika tidak sengaja terketik di Railway
     API_KEYS = [k.strip().strip('"').strip("'") for k in raw_keys.split(',')] if raw_keys else []
-    API_KEYS = [k for k in API_KEYS if k] # Buang string kosong jika ada koma menggantung
+    API_KEYS = [k for k in API_KEYS if k] # Membuang elemen kosong jika ada koma lebih
     
     if not API_KEYS:
-        return "❌ Batalkan proses! Variabel 'GEMINI_KEYS' atau 'GEMINI_KEY' belum diisi atau salah format di Railway."
+        return "❌ Batalkan proses! Variabel 'GROQ_KEYS' belum diisi di Railway."
         
     attempts = 0
     total_keys = len(API_KEYS)
     
     while attempts < total_keys:
-        # Menjaga indeks tetap aman jika jumlah key berubah dinamis
         current_key_index = current_key_index % total_keys
         active_key = API_KEYS[current_key_index]
         
         try:
-            temp_client = genai.Client(api_key=active_key)
+            temp_client = Groq(api_key=active_key)
             
             if img_pil:
-                response = temp_client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=[prompt, img_pil]
+                # Mode Vision: Konversi gambar ke format yang dibaca Groq
+                buffered = io.BytesIO()
+                img_pil.save(buffered, format="JPEG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                
+                response = temp_client.chat.completions.create(
+                    model="llama-3.2-11b-vision-preview",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{img_base64}"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
                 )
             else:
-                response = temp_client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=prompt
+                # Mode Chat Teks Biasa (Kecepatan Super Tinggi)
+                response = temp_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
                 )
-            return response.text
+                
+            return response.choices[0].message.content
             
         except Exception as e:
             error_msg = str(e)
-            logging.error(f"Kunci indeks ke-{current_key_index} bermasalah: {error_msg}")
+            logging.error(f"Groq Key indeks ke-{current_key_index} bermasalah: {error_msg}")
             
-            # PENTING: Rotasi ke key berikutnya untuk SEMUA jenis error (baik 429 maupun key tidak valid)
-            # Ini memastikan jika key ke-1 rusak/salah ketik, bot tetap mencoba key ke-2, 3, dan 4.
+            # Jika limit/error, OTOMATIS lompat ke kunci akun berikutnya!
             current_key_index = (current_key_index + 1) % total_keys
             attempts += 1
                 
-    return "❌ Waduh, semua API Key yang didaftarkan di Railway sedang limit atau tidak valid! Coba beberapa menit lagi."
+    return "❌ Waduh, semua ke-4 API Key Groq yang didaftarkan sedang sibuk/limit! Coba beberapa menit lagi."
 
 # ==========================================
 
@@ -236,7 +257,6 @@ def handle_files(m):
             prompt = m.caption if m.caption else "Ekstrak teks (OCR) jika ada, lalu jelaskan isi gambar ini secara detail."
             reply_text = get_ai_response(prompt, img_pil=img_pil)
             
-            # Ditambahkan sistem proteksi format teks Telegram Markdown
             try:
                 bot.edit_message_text(f"🤖 *Hasil AI Vision:*\n\n{reply_text}", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             except Exception:
@@ -416,7 +436,6 @@ def handle_text(m):
             bot.delete_message(m.chat.id, loading_msg.message_id)
         except Exception as e: bot.edit_message_text(f"❌ *Error:* {str(e)}", m.chat.id, loading_msg.message_id)
         return
-
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Mengunduh media...*", parse_mode="Markdown")
         try:
@@ -434,7 +453,6 @@ def handle_text(m):
         try:
             reply_text = get_ai_response(m.text)
             
-            # Mengaktifkan format Markdown AI & fallback otomatis jika teks AI bikin crash parser Telegram
             try:
                 bot.edit_message_text(reply_text, chat_id=m.chat.id, message_id=loading_msg.message_id, parse_mode="Markdown")
             except Exception:
