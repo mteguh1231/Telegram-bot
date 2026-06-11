@@ -6,30 +6,6 @@ import subprocess
 import sys
 import zipfile
 
-# --- AUTO INSTALLER UNTUK HP ---
-# --- AUTO INSTALLER UNTUK HP / SERVER ---
-def install_library(import_name, pip_name=None):
-    if pip_name is None:
-        pip_name = import_name
-        
-    try:
-        __import__(import_name)
-    except ImportError:
-        logging.info(f"Mengunduh library {pip_name} otomatis...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
-            logging.info(f"Sukses menginstal {pip_name}!")
-        except Exception as e:
-            logging.error(f"Gagal menginstal {pip_name}: {str(e)}")
-
-# Jalankan pengecekan library
-install_library("rembg")
-install_library("onnxruntime")
-install_library("qrcode")
-install_library("cv2", "opencv-python-headless")
-install_library("numpy")
-
-
 import telebot
 from telebot import types
 from PIL import Image
@@ -81,7 +57,6 @@ user_states = {}
 # ==========================================
 # ROTASI API KEY GEMINI VIA RAILWAY VARIABLES
 # ==========================================
-# Membaca string panjang dari Railway, lalu memotongnya berdasarkan tanda koma menjadi List
 raw_keys = os.getenv('GEMINI_KEYS', '')
 API_KEYS = [k.strip() for k in raw_keys.split(',')] if raw_keys else []
 current_key_index = 0
@@ -439,5 +414,13 @@ def handle_text(m):
         except Exception: bot.edit_message_text("❌ *Gagal mengunduh!*", m.chat.id, loading_msg.message_id)
 
     elif state == "chat":
-                loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
-        
+        loading_msg = bot.reply_to(m, "💭 *AI sedang berpikir...*", parse_mode="Markdown")
+        try:
+            reply_text = get_ai_response(m.text)
+            bot.edit_message_text(reply_text, chat_id=m.chat.id, message_id=loading_msg.message_id)
+        except Exception as e: 
+            bot.edit_message_text(f"❌ *AI Sibuk:* {str(e)}", chat_id=m.chat.id, message_id=loading_msg.message_id)
+
+if __name__ == "__main__": 
+    bot.infinity_polling()
+            
