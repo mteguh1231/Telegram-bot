@@ -62,13 +62,13 @@ def get_ai_response(chat_id, prompt, img_pil=None):
             temp_client = Groq(api_key=active_key)
             
             if img_pil:
-                # Mode Vision (Foto) -> Tidak masuk ke memori chat karena terlalu berat
+                # Mode Vision (Foto) -> UPDATE MODEL TERBARU DI SINI
                 buffered = io.BytesIO()
                 img_pil.save(buffered, format="JPEG")
                 img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 
                 response = temp_client.chat.completions.create(
-                    model="llama-3.2-11b-vision-preview",
+                    model="llama-3.2-90b-vision-preview",  # <-- Menggantikan versi 11b yang sudah dihapus
                     messages=[{
                         "role": "user",
                         "content": [
@@ -88,7 +88,6 @@ def get_ai_response(chat_id, prompt, img_pil=None):
                 
                 chat_history[chat_id].append({"role": "user", "content": prompt})
                 
-                # Batasi memori (Maksimal 1 Instruksi + 10 Chat terakhir)
                 if len(chat_history[chat_id]) > 11:
                     chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-10:]
                 
@@ -108,6 +107,7 @@ def get_ai_response(chat_id, prompt, img_pil=None):
             attempts += 1
                 
     return "❌ Waduh, API Key Groq sedang sibuk/limit! Coba lagi nanti."
+    
 
 # ==========================================
 
