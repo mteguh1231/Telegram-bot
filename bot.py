@@ -7,6 +7,13 @@ import sys
 import zipfile
 import base64
 
+# --- PENGAMAN: AUTO UPDATE YT-DLP SAAT BOT START ---
+try:
+    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True)
+    print("yt-dlp berhasil diupdate ke versi terbaru!")
+except:
+    pass
+
 import telebot
 from telebot import types
 from PIL import Image
@@ -333,22 +340,17 @@ def handle_text(m):
 
     elif state in ["dl_yt", "dl_tt", "dl_ig"]:
         loading_msg = bot.reply_to(m, "⏳ *Memproses video... Mohon tunggu.*", parse_mode="Markdown")
-        out_filename = f"media_{m.chat.id}.mp4"
         try:
-                        # OPTIMASI FORMAT FLEKSIBEL (MEMBUTUHKAN FFMPEG)
+            # KITA HAPUS BATASAN FORMAT! Biarkan yt-dlp memilih format bawaan terbaik
             ydl_opts = {
-                # Prioritas 1: Gabungkan video & audio terbaik. Prioritas 2: Ambil video gabungan apa pun yg tersedia
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best/b',
-                'outtmpl': out_filename,
-                'merge_output_format': 'mp4', # Paksa hasil akhir berformat mp4
+                'outtmpl': f'media_{m.chat.id}_%(id)s.%(ext)s', # Ekstensi file dinamis mengikuti aslinya
                 'no_warnings': True,
                 'quiet': True,
                 'geo_bypass': True, 
                 'nocheckcertificate': True,
             }
             
-            
-            # Jika link adalah YouTube, paksa menyamar sebagai Client Apps Mobile & Web
+            # Anti-bot bypass untuk YouTube
             if "youtube.com" in m.text or "youtu.be" in m.text or "yt.be" in m.text:
                 ydl_opts['extractor_args'] = {
                     'youtube': {
@@ -356,40 +358,32 @@ def handle_text(m):
                     }
                 }
                 
-            # Jaga-jaga jika kamu menambahkan file cookies.txt ke server root
             if os.path.exists('cookies.txt'):
                 ydl_opts['cookiefile'] = 'cookies.txt'
                 
-            # Proses Download
+            # Proses Download menggunakan sistem dinamis
             with YoutubeDL(ydl_opts) as ydl: 
-                ydl.download([m.text])
+                info = ydl.extract_info(m.text, download=True)
+                out_filename = ydl.prepare_filename(info)
                 
-            # Verifikasi apakah file berhasil terunduh sebelum dikirim
             if os.path.exists(out_filename):
                 bot.edit_message_text("📤 *Video berhasil diunduh! Sedang mengirim ke Telegram...*", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
                 with open(out_filename, 'rb') as f: 
-                    # Tambahan timeout agar tidak terputus saat bot mengunggah file lumayan besar
                     bot.send_video(m.chat.id, f, caption="✨ *Selesai!*", parse_mode="Markdown", timeout=120) 
-                os.remove(out_filename)
+                os.remove(out_filename) # Hapus file setelah dikirim
                 bot.delete_message(m.chat.id, loading_msg.message_id)
             else:
-                bot.edit_message_text("❌ *Gagal:* File video tidak ditemukan setelah diproses.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
+                bot.edit_message_text("❌ *Gagal:* File video tidak ditemukan.", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
         except Exception as e: 
             logging.error(f"Gagal download: {str(e)}")
-            error_msg = str(e).lower()
+            bot.edit_message_text(f"❌ *Gagal mengunduh!*\n\n`Detail: {str(e)[:150]}...`", m.chat.id, loading_msg.message_id, parse_mode="Markdown")
             
-            # Mengubah pesan error agar lebih mudah dipahami
-            if "filesize" in error_msg or "too large" in error_msg:
-                teks_gagal = "❌ *Gagal mengunduh!*\nUkuran video terlalu besar (melebihi batas 50MB dari Telegram)."
-            elif "sign in" in error_msg or "bot" in error_msg:
-                teks_gagal = "❌ *Gagal mengunduh!*\nYouTube memblokir akses server bot. Pastikan cookies.txt sudah dimasukkan."
-            else:
-                teks_gagal = f"❌ *Gagal mengunduh!*\nLink mungkin diproteksi (Private) atau server diblokir.\n\n`Detail: {str(e)[:100]}...`"
-                
-            bot.edit_message_text(teks_gagal, m.chat.id, loading_msg.message_id, parse_mode="Markdown")
-            if os.path.exists(out_filename):
-                os.remove(out_filename)
+            # Bersihkan file sisa (sampah) jika error di tengah jalan
+            for file in os.listdir('.'):
+                if file.startswith(f"media_{m.chat.id}"):
+                    try: os.remove(file)
+                    except: pass
         return
 
     elif state == "chat":
